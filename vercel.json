@@ -1,8 +1,16 @@
 {
   "rewrites": [
     {
+      "source": "/admin/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://hype.uykb.eu.org/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
