@@ -152,6 +152,13 @@ func Load(configPath string) (*Config, error) {
 
 	// 云平台环境变量兼容处理 (如 Koyeb / Render / Heroku 等)
 	if envDBURL := os.Getenv("DATABASE_URL"); envDBURL != "" && cfg.Database.URL == "" {
+		if !strings.Contains(envDBURL, "sslmode=") {
+			if strings.Contains(envDBURL, "?") {
+				envDBURL += "&sslmode=require"
+			} else {
+				envDBURL += "?sslmode=require"
+			}
+		}
 		cfg.Database.URL = envDBURL
 		cfg.Database.Type = "postgres"
 	}
