@@ -6,7 +6,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://hype.uykb.eu.org/api/:path*"
+      "destination": "https://handicapped-teodora-diyvv-ddf9b75d.koyeb.app/api/:path*"
     },
     {
       "source": "/(.*)",
