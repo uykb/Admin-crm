@@ -22,6 +22,7 @@ import (
 	// L1 内置插件（blank import，触发 init() 自注册）
 	_ "apeadmin-gin/internal/plugin/builtin/hello"
 	_ "apeadmin-gin/internal/plugin/builtin/dev_example"
+	_ "apeadmin-gin/internal/plugin/builtin/hikiot"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
