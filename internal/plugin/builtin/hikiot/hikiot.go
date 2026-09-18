@@ -3,6 +3,9 @@ package hikiot
 import (
 	"log"
 
+	"apeadmin-gin/internal/core"
+	"apeadmin-gin/internal/dal"
+	"apeadmin-gin/internal/model"
 	"apeadmin-gin/internal/plugin"
 	hikapi "apeadmin-gin/internal/plugin/builtin/hikiot/api"
 	hikmcp "apeadmin-gin/internal/plugin/builtin/hikiot/mcp"
@@ -36,7 +39,34 @@ func (p *HikPlugin) Dependencies() []string {
 }
 
 func (p *HikPlugin) OnLoad() error {
-	log.Println("[Plugin:hikiot] 插件加载完成")
+	db := core.GetDB()
+	if db != nil {
+		existing, err := dal.GetPluginByName(p.Name())
+		if err == nil && existing != nil {
+			if existing.Version != p.Version() || existing.DisplayName != p.DisplayName() {
+				existing.DisplayName = p.DisplayName()
+				existing.Description = p.Description()
+				existing.Version = p.Version()
+				existing.Author = p.Author()
+				existing.Enabled = true
+				_ = dal.UpdatePlugin(existing)
+			}
+		} else {
+			record := &model.SysPlugin{
+				Name:        p.Name(),
+				DisplayName: p.DisplayName(),
+				Description: p.Description(),
+				Version:     p.Version(),
+				Author:      p.Author(),
+				Enabled:     true,
+				ModulePath:  "(builtin)",
+			}
+			if err := dal.CreatePlugin(record); err != nil {
+				log.Printf("[Plugin:hikiot] 登记 sys_plugin 失败: %v", err)
+			}
+		}
+	}
+	log.Println("[Plugin:hikiot] 插件加载完成并在数据库登记")
 	return nil
 }
 
