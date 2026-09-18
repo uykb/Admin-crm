@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://hype.uykb.eu.org/api/:path*"
+    }
+  ]
+}
