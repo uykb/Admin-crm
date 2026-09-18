@@ -23,6 +23,7 @@ ENV TZ=Asia/Shanghai
 COPY --from=builder /app/apeadmin-server ./apeadmin-server
 COPY --from=builder /app/configs ./configs
 COPY --from=builder /app/internal/plugin/builtin ./internal/plugin/builtin
+COPY --from=builder /app/release-package/frontend/dist ./frontend/dist
 
 EXPOSE 8001
 
