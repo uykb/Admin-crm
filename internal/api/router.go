@@ -214,8 +214,12 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, registerPlugins PluginRou
 				// 静态资源
 				r.Static(adminPath+"/assets", filepath.Join(spaRoot, "assets"))
 				r.StaticFile("/favicon.ico", filepath.Join(spaRoot, "assets", "images", "favicon", "favicon.png"))
-				r.StaticFile(adminPath, indexFile) // gin 会自动处理 /admin 与 /admin/
+				r.StaticFile(adminPath, indexFile)
+				r.StaticFile(adminPath+"/", indexFile)
 				r.StaticFile(adminPath+"/index.html", indexFile)
+				r.GET("/", func(c *gin.Context) {
+					c.Redirect(http.StatusFound, adminPath+"/")
+				})
 				// SPA fallback：非 API 路径返回 index.html（前端路由统一挂在 admin_path 下）
 				r.NoRoute(func(c *gin.Context) {
 					if strings.HasPrefix(c.Request.URL.Path, cfg.App.APIPrefix) ||
