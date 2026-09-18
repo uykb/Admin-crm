@@ -1,0 +1,11 @@
+.git
+.gitignore
+.idea
+.vscode
+*.db
+uploads/
+logs/
+bin/
+tmp/
+*.tar.gz
+*.zip
