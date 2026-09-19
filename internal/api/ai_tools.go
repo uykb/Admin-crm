@@ -105,6 +105,8 @@ func defaultModel(providerType string) string {
 		return "glm-4-flash"
 	case "openai":
 		return "gpt-4o-mini"
+	case "gemini":
+		return "gemini-2.5-flash"
 	default:
 		return ""
 	}

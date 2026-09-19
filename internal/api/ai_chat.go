@@ -216,6 +216,8 @@ func defaultBaseURL(providerType string) string {
 		return "https://open.bigmodel.cn/api/paas/v4"
 	case "openai":
 		return "https://api.openai.com/v1"
+	case "gemini":
+		return "https://generativelanguage.googleapis.com/v1beta/openai/"
 	default:
 		return ""
 	}
