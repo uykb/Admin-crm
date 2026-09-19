@@ -39,9 +39,9 @@ func (r *TailscaleResolver) RefreshConfig() {
 		return
 	}
 
-	var cfg tsmodel.TsConfig
-	if err := r.db.Where("key = ?", "tailscale_proxy_url").First(&cfg).Error; err == nil && cfg.Value != "" {
-		if u, err := url.Parse(cfg.Value); err == nil {
+	var cfgs []tsmodel.TsConfig
+	if err := r.db.Where("key = ?", "tailscale_proxy_url").Limit(1).Find(&cfgs).Error; err == nil && len(cfgs) > 0 && cfgs[0].Value != "" {
+		if u, err := url.Parse(cfgs[0].Value); err == nil {
 			r.proxyURL = u
 		}
 	}
