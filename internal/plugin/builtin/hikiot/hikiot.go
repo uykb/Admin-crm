@@ -10,6 +10,8 @@ import (
 	hikapi "apeadmin-gin/internal/plugin/builtin/hikiot/api"
 	hikmcp "apeadmin-gin/internal/plugin/builtin/hikiot/mcp"
 	hikmodel "apeadmin-gin/internal/plugin/builtin/hikiot/model"
+
+	"gorm.io/gorm"
 )
 
 type HikPlugin struct{}
@@ -65,9 +67,67 @@ func (p *HikPlugin) OnLoad() error {
 				log.Printf("[Plugin:hikiot] 登记 sys_plugin 失败: %v", err)
 			}
 		}
+		p.ensureMenu(db)
 	}
 	log.Println("[Plugin:hikiot] 插件加载完成并在数据库登记")
 	return nil
+}
+
+// ensureMenu 幂等注入海康互联控制台菜单及按钮权限
+func (p *HikPlugin) ensureMenu(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	var count int64
+	db.Model(&model.SysMenu{}).Where("permission = ?", "hikiot:door:list").Count(&count)
+	if count > 0 {
+		return
+	}
+
+	// 1. 海康互联 顶级目录 (M)
+	dir := model.SysMenu{
+		Name: "海康互联", ParentID: 0, Type: "M", Path: "/hikiot",
+		Icon: "VideoCamera", Sort: 5, Visible: 1, Status: 1,
+	}
+	if err := db.Create(&dir).Error; err != nil {
+		log.Printf("[Plugin:hikiot] 创建顶级菜单失败: %v", err)
+		return
+	}
+
+	// 2. 管控中心 子菜单 (C)
+	child := model.SysMenu{
+		Name: "门禁考勤控制台", ParentID: dir.ID, Type: "C", Path: "ui",
+		Component: "hikiot/ui", Permission: "hikiot:door:list",
+		Icon: "Key", Sort: 1, Visible: 1, Status: 1,
+	}
+	if err := db.Create(&child).Error; err != nil {
+		log.Printf("[Plugin:hikiot] 创建子菜单失败: %v", err)
+		return
+	}
+
+	// 3. 按钮权限 (F)
+	btns := []model.SysMenu{
+		{Name: "控门操作", ParentID: child.ID, Type: "F", Permission: "hikiot:door:control", Sort: 1, Status: 1},
+		{Name: "考勤查看", ParentID: child.ID, Type: "F", Permission: "hikiot:attendance:list", Sort: 2, Status: 1},
+		{Name: "配置管理", ParentID: child.ID, Type: "F", Permission: "hikiot:config:edit", Sort: 3, Status: 1},
+	}
+	for _, b := range btns {
+		_ = db.Create(&b).Error
+	}
+
+	// 4. 超管角色绑定
+	var adminRole model.SysRole
+	if err := db.Where("code = ?", "admin").First(&adminRole).Error; err == nil {
+		var menus []model.SysMenu
+		db.Model(&adminRole).Association("Menus").Find(&menus)
+		menus = append(menus, dir, child)
+		for _, b := range btns {
+			menus = append(menus, b)
+		}
+		_ = db.Model(&adminRole).Association("Menus").Replace(&menus)
+	}
+
+	log.Println("[Plugin:hikiot] 菜单已成功注入系统菜单树")
 }
 
 func (p *HikPlugin) Install() error {

@@ -20,6 +20,22 @@ func NewHikHandler(db *gorm.DB) *HikHandler {
 	}
 }
 
+// RenderUI 渲染海康互联可视化管理面板
+func (h *HikHandler) RenderUI(c *gin.Context) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, HikUIHTML)
+}
+
+// GetConfig 获取海康开放平台配置
+func (h *HikHandler) GetConfig(c *gin.Context) {
+	cfg, err := h.svc.GetConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "获取配置失败"))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(cfg))
+}
+
 // SaveConfig 保存海康开放平台配置
 func (h *HikHandler) SaveConfig(c *gin.Context) {
 	var req struct {
@@ -41,24 +57,14 @@ func (h *HikHandler) SaveConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success("海康配置保存成功"))
 }
 
-// SyncOrgs 手动同步组织架构
-func (h *HikHandler) SyncOrgs(c *gin.Context) {
-	count, err := h.svc.SyncOrgs()
+// ListDoors 获取门禁设备列表
+func (h *HikHandler) ListDoors(c *gin.Context) {
+	list, err := h.svc.ListDoors()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, "同步海康组织架构失败: "+err.Error()))
+		c.JSON(http.StatusInternalServerError, response.Error(500, "查询门禁设备失败: "+err.Error()))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"synced_count": count}))
-}
-
-// SyncPersons 手动同步人员档案
-func (h *HikHandler) SyncPersons(c *gin.Context) {
-	count, err := h.svc.SyncPersons()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, "同步海康人员失败: "+err.Error()))
-		return
-	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"synced_count": count}))
+	c.JSON(http.StatusOK, response.Success(list))
 }
 
 // SyncDoors 手动同步门禁列表
@@ -117,16 +123,39 @@ func (h *HikHandler) SearchPerson(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(list))
 }
 
+// SyncOrgs 手动同步组织架构
+func (h *HikHandler) SyncOrgs(c *gin.Context) {
+	count, err := h.svc.SyncOrgs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "同步海康组织架构失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(gin.H{"synced_count": count}))
+}
+
+// SyncPersons 手动同步人员档案
+func (h *HikHandler) SyncPersons(c *gin.Context) {
+	count, err := h.svc.SyncPersons()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "同步海康人员失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(gin.H{"synced_count": count}))
+}
+
 // SetupRoutes 挂载路由规则
 func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 	api := group.Group("/hikiot")
 	{
+		api.GET("/ui", handler.RenderUI)
+		api.GET("/config", handler.GetConfig)
 		api.POST("/config", handler.SaveConfig)
-		api.POST("/sync/orgs", handler.SyncOrgs)
-		api.POST("/sync/persons", handler.SyncPersons)
+		api.GET("/doors", handler.ListDoors)
 		api.POST("/sync/doors", handler.SyncDoors)
 		api.POST("/doors/control", handler.ControlDoor)
 		api.GET("/attendance/records", handler.ListAttendance)
 		api.GET("/persons/search", handler.SearchPerson)
+		api.POST("/sync/orgs", handler.SyncOrgs)
+		api.POST("/sync/persons", handler.SyncPersons)
 	}
 }
