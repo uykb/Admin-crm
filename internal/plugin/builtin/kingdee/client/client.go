@@ -58,11 +58,11 @@ func NewClient(serverURL, dbID, username, password, appID, appSecret string, lci
 	serverURL = normalizeServerURL(serverURL)
 	return &Client{
 		ServerURL: serverURL,
-		DbID:      dbID,
-		Username:  username,
-		Password:  password,
-		AppID:     appID,
-		AppSecret: appSecret,
+		DbID:      strings.TrimSpace(dbID),
+		Username:  strings.TrimSpace(username),
+		Password:  strings.TrimSpace(password),
+		AppID:     strings.TrimSpace(appID),
+		AppSecret: strings.TrimSpace(appSecret),
 		Lcid:      lcid,
 		HTTPClient: &http.Client{
 			Jar:     jar,
@@ -71,27 +71,9 @@ func NewClient(serverURL, dbID, username, password, appID, appSecret string, lci
 	}
 }
 
-// Authenticate 账套登录鉴权（设置 Session Cookie）
-func (c *Client) Authenticate() error {
-	if c.ServerURL == "" {
-		return fmt.Errorf("未配置内网金蝶云星空服务地址")
-	}
-	if c.DbID == "" || c.Username == "" {
-		return fmt.Errorf("未配置金蝶账套 ID 或登录用户")
-	}
-
+// tryAuthenticate 使用指定参数调用金蝶 ApiService.Authenticate 接口
+func (c *Client) tryAuthenticate(params []interface{}) error {
 	url := c.ServerURL + "/Kingdee.BOS.WebApi.ServicesRepository.ApiService.Authenticate.common.kdsvc"
-
-	// 优先使用 AppID + AppSecret (5 参数模式: [acctID, username, appID, appSecret, lcid])
-	var params []interface{}
-	if c.AppID != "" && c.AppSecret != "" {
-		params = []interface{}{c.DbID, c.Username, c.AppID, c.AppSecret, c.Lcid}
-	} else if c.AppSecret != "" {
-		params = []interface{}{c.DbID, c.Username, c.AppSecret, c.Lcid}
-	} else {
-		params = []interface{}{c.DbID, c.Username, c.Password, c.Lcid}
-	}
-
 	payload := map[string]interface{}{
 		"parameters": params,
 	}
@@ -121,7 +103,7 @@ func (c *Client) Authenticate() error {
 	bodyBytes = bytes.TrimSpace(bodyBytes)
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("金蝶登录接口返回 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var authResp AuthResponse
@@ -130,7 +112,7 @@ func (c *Client) Authenticate() error {
 			return nil
 		}
 		if len(authResp.ResponseStatus.Errors) > 0 {
-			return fmt.Errorf("金蝶登录失败: %s", authResp.ResponseStatus.Errors[0].Message)
+			return fmt.Errorf("%s", authResp.ResponseStatus.Errors[0].Message)
 		}
 	}
 
@@ -139,7 +121,54 @@ func (c *Client) Authenticate() error {
 		return nil
 	}
 
-	return fmt.Errorf("金蝶登录未成功，服务器响应: %s", string(bodyBytes))
+	return fmt.Errorf("%s", string(bodyBytes))
+}
+
+// Authenticate 账套登录鉴权（支持多参数组合自动重试）
+func (c *Client) Authenticate() error {
+	if c.ServerURL == "" {
+		return fmt.Errorf("未配置内网金蝶云星空服务地址")
+	}
+	if c.DbID == "" || c.Username == "" {
+		return fmt.Errorf("未配置金蝶账套 ID 或登录用户")
+	}
+
+	var candidateParams [][]interface{}
+
+	// 1. 若填写了用户密码，首先尝试标准密码模式: [acctID, username, password, lcid]
+	if c.Password != "" {
+		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.Password, c.Lcid})
+	}
+
+	// 2. 若填写了 AppID + AppSecret，尝试 5 参数模式: [acctID, username, appID, appSecret, lcid]
+	if c.AppID != "" && c.AppSecret != "" {
+		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.AppID, c.AppSecret, c.Lcid})
+	}
+
+	// 3. 尝试 6 参数模式: [acctID, username, password, lcid, appID, appSecret]
+	if c.Password != "" && c.AppID != "" && c.AppSecret != "" {
+		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.Password, c.Lcid, c.AppID, c.AppSecret})
+	}
+
+	// 4. 尝试仅 AppSecret 4 参数模式: [acctID, username, appSecret, lcid]
+	if c.AppSecret != "" {
+		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.AppSecret, c.Lcid})
+	}
+
+	if len(candidateParams) == 0 {
+		return fmt.Errorf("未配置金蝶登录密码或应用密钥 (AppSecret)")
+	}
+
+	var lastErr error
+	for _, params := range candidateParams {
+		if err := c.tryAuthenticate(params); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+
+	return fmt.Errorf("金蝶登录未成功，服务器响应: %w", lastErr)
 }
 
 // ExecuteBillQuery 执行通用单据/表单列表查询
