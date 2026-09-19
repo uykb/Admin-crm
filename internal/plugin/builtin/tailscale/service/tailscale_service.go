@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	tsclient "apeadmin-gin/internal/plugin/builtin/tailscale/client"
 	tsmodel "apeadmin-gin/internal/plugin/builtin/tailscale/model"
@@ -112,6 +113,11 @@ func (s *TailscaleService) SyncDevices() (int, error) {
 		routes, _ := cli.GetDeviceRoutes(dev.ID)
 		routesJSON, _ := json.Marshal(routes)
 
+		isOnline := dev.Online || dev.Connected
+		if !isOnline && !dev.LastSeen.IsZero() && time.Since(dev.LastSeen) < 10*time.Minute {
+			isOnline = true
+		}
+
 		var record tsmodel.TsDeviceCache
 		if err := s.db.Where("device_id = ?", dev.ID).First(&record).Error; err == nil {
 			record.Name = dev.Name
@@ -122,7 +128,7 @@ func (s *TailscaleService) SyncDevices() (int, error) {
 			record.ClientVersion = dev.ClientVersion
 			record.UpdateAvailable = dev.UpdateAvailable
 			record.LastSeen = dev.LastSeen
-			record.Online = dev.Online
+			record.Online = isOnline
 			record.KeyExpiryDisabled = dev.KeyExpiryDisabled
 			record.Tags = string(tagsJSON)
 			record.SubnetRoutes = string(routesJSON)
@@ -138,7 +144,7 @@ func (s *TailscaleService) SyncDevices() (int, error) {
 				ClientVersion:     dev.ClientVersion,
 				UpdateAvailable:   dev.UpdateAvailable,
 				LastSeen:          dev.LastSeen,
-				Online:            dev.Online,
+				Online:            isOnline,
 				KeyExpiryDisabled: dev.KeyExpiryDisabled,
 				Tags:              string(tagsJSON),
 				SubnetRoutes:      string(routesJSON),
@@ -171,6 +177,12 @@ func (s *TailscaleService) ListCachedDevices(keyword string) ([]tsmodel.TsDevice
 	if len(devices) == 0 && keyword == "" {
 		_, _ = s.SyncDevices()
 		s.db.Order("online desc, last_seen desc").Find(&devices)
+	}
+
+	for i := range devices {
+		if !devices[i].Online && !devices[i].LastSeen.IsZero() && time.Since(devices[i].LastSeen) < 10*time.Minute {
+			devices[i].Online = true
+		}
 	}
 
 	return devices, nil

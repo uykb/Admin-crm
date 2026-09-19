@@ -20,9 +20,10 @@ type Device struct {
 	OS                string   `json:"os"`
 	ClientVersion     string   `json:"clientVersion"`
 	UpdateAvailable   bool     `json:"updateAvailable"`
-	LastSeen          time.Time`json:"lastSeen"`
-	Online            bool     `json:"online"`
-	KeyExpiryDisabled bool     `json:"keyExpiryDisabled"`
+	LastSeen          time.Time `json:"lastSeen"`
+	Online            bool      `json:"online"`
+	Connected         bool      `json:"connected"`
+	KeyExpiryDisabled bool      `json:"keyExpiryDisabled"`
 	Tags              []string `json:"tags"`
 	NodeKey           string   `json:"nodeKey"`
 }
