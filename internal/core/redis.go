@@ -38,8 +38,8 @@ func InitRedis() {
 			return
 		}
 
-		// 针对 Upstash 或 rediss:// 自动开启 TLS 加密握手
-		if opt.TLSConfig == nil && (strings.HasPrefix(redisURL, "rediss://") || strings.Contains(redisURL, "upstash.io") || strings.Contains(opt.Addr, "upstash.io")) {
+		// 针对 Upstash / 云端 TLS 自动开启 TLS 校验
+		if opt.TLSConfig == nil && strings.HasPrefix(redisURL, "rediss://") {
 			opt.TLSConfig = &tls.Config{
 				MinVersion: tls.VersionTLS12,
 			}
