@@ -161,7 +161,7 @@ const HikUIHTML = `<!DOCTYPE html>
         const savingConfig = ref(false);
 
         const getAuthHeader = () => {
-          const token = localStorage.getItem('token') || '';
+          const token = localStorage.getItem('apeadmin_token') || localStorage.getItem('token') || '';
           return token ? { 'Authorization': 'Bearer ' + token } : {};
         };
 
