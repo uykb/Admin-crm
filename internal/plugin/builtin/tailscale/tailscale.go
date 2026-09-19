@@ -4,12 +4,14 @@ import (
 	"log"
 
 	"apeadmin-gin/internal/core"
+	"apeadmin-gin/internal/core/netproxy"
 	"apeadmin-gin/internal/dal"
 	"apeadmin-gin/internal/model"
 	"apeadmin-gin/internal/plugin"
 	tsapi "apeadmin-gin/internal/plugin/builtin/tailscale/api"
 	tsmcp "apeadmin-gin/internal/plugin/builtin/tailscale/mcp"
 	tsmodel "apeadmin-gin/internal/plugin/builtin/tailscale/model"
+	tsproxy "apeadmin-gin/internal/plugin/builtin/tailscale/proxy"
 
 	"gorm.io/gorm"
 )
@@ -68,6 +70,11 @@ func (p *TailscalePlugin) OnLoad() error {
 			}
 		}
 		p.ensureMenu(db)
+
+		// 注册内网透明 HTTP 代理解析器
+		resolver := tsproxy.NewTailscaleResolver(db)
+		netproxy.RegisterResolver(resolver)
+		log.Println("[Plugin:tailscale] 内网透明 HTTP 代理解析器已成功注册至系统底座")
 	}
 	log.Println("[Plugin:tailscale] 插件加载完成并在数据库登记")
 	return nil
@@ -159,6 +166,8 @@ func (p *TailscalePlugin) Register(pr *plugin.PluginRouter) error {
 }
 
 func (p *TailscalePlugin) Unregister() error {
+	netproxy.UnregisterResolver("tailscale")
+	log.Println("[Plugin:tailscale] 内网透明 HTTP 代理解析器已从系统底座注销")
 	return nil
 }
 
@@ -166,7 +175,9 @@ func (p *TailscalePlugin) Uninstall() error {
 	return nil
 }
 
-func (p *TailscalePlugin) OnUnload() {}
+func (p *TailscalePlugin) OnUnload() {
+	netproxy.UnregisterResolver("tailscale")
+}
 
 func init() {
 	plugin.Register(&TailscalePlugin{})
