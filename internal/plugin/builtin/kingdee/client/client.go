@@ -117,9 +117,11 @@ func (c *Client) Authenticate() error {
 	if err != nil {
 		return err
 	}
+	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
+	bodyBytes = bytes.TrimSpace(bodyBytes)
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("金蝶接口返回 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("金蝶登录接口返回 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var authResp AuthResponse
@@ -137,7 +139,7 @@ func (c *Client) Authenticate() error {
 		return nil
 	}
 
-	return nil
+	return fmt.Errorf("金蝶登录未成功，服务器响应: %s", string(bodyBytes))
 }
 
 // ExecuteBillQuery 执行通用单据/表单列表查询
@@ -178,6 +180,8 @@ func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error
 	if err != nil {
 		return nil, err
 	}
+	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
+	bodyBytes = bytes.TrimSpace(bodyBytes)
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("金蝶单据接口返回 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
@@ -185,12 +189,40 @@ func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error
 
 	var rows [][]interface{}
 	if err := json.Unmarshal(bodyBytes, &rows); err != nil {
-		// 检查是否返回了错误对象而非二维数组
+		// 检查是否返回了错误对象 map
 		var errObj map[string]interface{}
 		if json.Unmarshal(bodyBytes, &errObj) == nil {
+			if respStatus, ok := errObj["ResponseStatus"].(map[string]interface{}); ok {
+				if errs, ok := respStatus["Errors"].([]interface{}); ok && len(errs) > 0 {
+					if errMap, ok := errs[0].(map[string]interface{}); ok {
+						if msg, ok := errMap["Message"].(string); ok {
+							return nil, fmt.Errorf("金蝶接口返回错误: %s", msg)
+						}
+					}
+				}
+			}
 			return nil, fmt.Errorf("金蝶接口返回错误: %s", string(bodyBytes))
 		}
-		return nil, fmt.Errorf("解析金蝶数据响应失败: %w", err)
+
+		// 检查是否返回了包裹在数组中的错误对象 [{"Result": ...}] 或 [{"ResponseStatus": ...}]
+		var errArr []map[string]interface{}
+		if json.Unmarshal(bodyBytes, &errArr) == nil && len(errArr) > 0 {
+			first := errArr[0]
+			if res, ok := first["Result"].(map[string]interface{}); ok {
+				if respStatus, ok := res["ResponseStatus"].(map[string]interface{}); ok {
+					if errs, ok := respStatus["Errors"].([]interface{}); ok && len(errs) > 0 {
+						if errMap, ok := errs[0].(map[string]interface{}); ok {
+							if msg, ok := errMap["Message"].(string); ok {
+								return nil, fmt.Errorf("金蝶接口返回错误: %s", msg)
+							}
+						}
+					}
+				}
+			}
+			return nil, fmt.Errorf("金蝶接口返回错误: %s", string(bodyBytes))
+		}
+
+		return nil, fmt.Errorf("解析金蝶数据响应失败: %w, 服务器原始响应内容: %s", err, string(bodyBytes))
 	}
 
 	return rows, nil
