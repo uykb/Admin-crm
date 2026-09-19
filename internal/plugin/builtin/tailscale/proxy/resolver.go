@@ -53,6 +53,11 @@ func (r *TailscaleResolver) ResolveProxy(req *http.Request) (*url.URL, bool, err
 		return nil, false, nil
 	}
 
+	proxyURL := r.getProxyURL()
+	if proxyURL == nil {
+		return nil, false, nil
+	}
+
 	hostname := req.URL.Hostname()
 	if hostname == "" {
 		return nil, false, nil
@@ -60,7 +65,7 @@ func (r *TailscaleResolver) ResolveProxy(req *http.Request) (*url.URL, bool, err
 
 	// 1. 匹配 MagicDNS 域名 (*.ts.net)
 	if strings.HasSuffix(strings.ToLower(hostname), ".ts.net") {
-		return r.getProxyURL(), true, nil
+		return proxyURL, true, nil
 	}
 
 	// 2. 匹配 100.64.0.0/10 (Tailscale 网段) 及 局域网私有 IP 网段 (192.168.x.x, 10.x.x.x, 172.16.x.x)
@@ -75,7 +80,7 @@ func (r *TailscaleResolver) ResolveProxy(req *http.Request) (*url.URL, bool, err
 			(p192 != nil && p192.Contains(ip)) ||
 			(p10 != nil && p10.Contains(ip)) ||
 			(p172 != nil && p172.Contains(ip)) {
-			return r.getProxyURL(), true, nil
+			return proxyURL, true, nil
 		}
 	}
 
@@ -86,12 +91,12 @@ func (r *TailscaleResolver) ResolveProxy(req *http.Request) (*url.URL, bool, err
 			for _, dev := range devices {
 				// 匹配设备名或主机名
 				if strings.EqualFold(dev.Name, hostname) || strings.EqualFold(dev.Hostname, hostname) {
-					return r.getProxyURL(), true, nil
+					return proxyURL, true, nil
 				}
 
 				// 匹配设备 IP
 				if dev.IPs != "" && strings.Contains(dev.IPs, hostname) {
-					return r.getProxyURL(), true, nil
+					return proxyURL, true, nil
 				}
 
 				// 匹配广播的局域网子网 (Subnet Routes)
@@ -103,7 +108,7 @@ func (r *TailscaleResolver) ResolveProxy(req *http.Request) (*url.URL, bool, err
 						for _, routeCIDR := range routes.EnabledRoutes {
 							_, cidr, err := net.ParseCIDR(routeCIDR)
 							if err == nil && cidr.Contains(ip) {
-								return r.getProxyURL(), true, nil
+								return proxyURL, true, nil
 							}
 						}
 					}
