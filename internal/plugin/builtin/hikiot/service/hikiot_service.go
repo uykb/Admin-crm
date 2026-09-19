@@ -21,32 +21,40 @@ func NewHikService(db *gorm.DB) *HikService {
 
 // GetClient 获取客户端实例
 func (s *HikService) GetClient() (*client.Client, error) {
-	cfgMap, err := s.GetConfig()
-	if err != nil {
-		return nil, err
+	var baseURL, appKey, appSecret string
+
+	var sBase, sKey, sSecret model.SysSetting
+	s.db.Where("key = ?", "hikiot_base_url").First(&sBase)
+	s.db.Where("key = ?", "hikiot_app_key").First(&sKey)
+	s.db.Where("key = ?", "hikiot_app_secret").First(&sSecret)
+
+	baseURL = sBase.Value
+	appKey = sKey.Value
+	appSecret = sSecret.Value
+
+	if baseURL == "" {
+		baseURL = "https://open.hikiot.com"
 	}
-	return client.NewClient(cfgMap["base_url"], cfgMap["app_key"], cfgMap["app_secret"]), nil
+
+	return client.NewClient(baseURL, appKey, appSecret), nil
 }
 
-// GetConfig 获取海康当前配置（单次批量查询）
+// GetConfig 获取海康当前配置
 func (s *HikService) GetConfig() (map[string]string, error) {
-	var settings []model.SysSetting
-	s.db.Where("key IN ?", []string{"hikiot_base_url", "hikiot_app_key", "hikiot_app_secret"}).Find(&settings)
+	var sBase, sKey, sSecret model.SysSetting
+	s.db.Where("key = ?", "hikiot_base_url").First(&sBase)
+	s.db.Where("key = ?", "hikiot_app_key").First(&sKey)
+	s.db.Where("key = ?", "hikiot_app_secret").First(&sSecret)
 
-	configMap := make(map[string]string)
-	for _, item := range settings {
-		configMap[item.Key] = item.Value
-	}
-
-	baseURL := configMap["hikiot_base_url"]
+	baseURL := sBase.Value
 	if baseURL == "" {
 		baseURL = "https://open.hikiot.com"
 	}
 
 	return map[string]string{
 		"base_url":   baseURL,
-		"app_key":    configMap["hikiot_app_key"],
-		"app_secret": configMap["hikiot_app_secret"],
+		"app_key":    sKey.Value,
+		"app_secret": sSecret.Value,
 	}, nil
 }
 
