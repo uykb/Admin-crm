@@ -71,9 +71,9 @@ func NewClient(serverURL, dbID, username, password, appID, appSecret string, lci
 	}
 }
 
-// tryAuthenticate 使用指定参数调用金蝶 ApiService.Authenticate 接口
-func (c *Client) tryAuthenticate(params []interface{}) error {
-	url := c.ServerURL + "/Kingdee.BOS.WebApi.ServicesRepository.ApiService.Authenticate.common.kdsvc"
+// tryAuthenticateUrl 使用指定 URL 与参数调用金蝶鉴权接口
+func (c *Client) tryAuthenticateUrl(endpoint string, params []interface{}) error {
+	url := c.ServerURL + endpoint
 	payload := map[string]interface{}{
 		"parameters": params,
 	}
@@ -124,7 +124,12 @@ func (c *Client) tryAuthenticate(params []interface{}) error {
 	return fmt.Errorf("%s", string(bodyBytes))
 }
 
-// Authenticate 账套登录鉴权（支持多参数组合自动重试）
+type authCandidate struct {
+	Endpoint string
+	Params   []interface{}
+}
+
+// Authenticate 账套登录鉴权（自动尝试标准 ValidateUser, LoginByAppSecret 与 ApiService 候选服务）
 func (c *Client) Authenticate() error {
 	if c.ServerURL == "" {
 		return fmt.Errorf("未配置内网金蝶云星空服务地址")
@@ -133,35 +138,47 @@ func (c *Client) Authenticate() error {
 		return fmt.Errorf("未配置金蝶账套 ID 或登录用户")
 	}
 
-	var candidateParams [][]interface{}
+	var candidates []authCandidate
 
-	// 1. 若填写了用户密码，首先尝试标准密码模式: [acctID, username, password, lcid]
+	// 1. 金蝶官方标准 ValidateUser 密码登录服务
 	if c.Password != "" {
-		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.Password, c.Lcid})
+		candidates = append(candidates, authCandidate{
+			Endpoint: "/Kingdee.BOS.WebApi.ServicesStub.AuthService.ValidateUser.common.kdsvc",
+			Params:   []interface{}{c.DbID, c.Username, c.Password, c.Lcid},
+		})
 	}
 
-	// 2. 若填写了 AppID + AppSecret，尝试 5 参数模式: [acctID, username, appID, appSecret, lcid]
+	// 2. 金蝶官方标准 LoginByAppSecret 应用授权服务
 	if c.AppID != "" && c.AppSecret != "" {
-		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.AppID, c.AppSecret, c.Lcid})
+		candidates = append(candidates, authCandidate{
+			Endpoint: "/Kingdee.BOS.WebApi.ServicesStub.AuthService.LoginByAppSecret.common.kdsvc",
+			Params:   []interface{}{c.DbID, c.Username, c.AppID, c.AppSecret, c.Lcid},
+		})
 	}
 
-	// 3. 尝试 6 参数模式: [acctID, username, password, lcid, appID, appSecret]
-	if c.Password != "" && c.AppID != "" && c.AppSecret != "" {
-		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.Password, c.Lcid, c.AppID, c.AppSecret})
+	// 3. ApiService.Authenticate 兼容入口 (密码模式)
+	if c.Password != "" {
+		candidates = append(candidates, authCandidate{
+			Endpoint: "/Kingdee.BOS.WebApi.ServicesRepository.ApiService.Authenticate.common.kdsvc",
+			Params:   []interface{}{c.DbID, c.Username, c.Password, c.Lcid},
+		})
 	}
 
-	// 4. 尝试仅 AppSecret 4 参数模式: [acctID, username, appSecret, lcid]
-	if c.AppSecret != "" {
-		candidateParams = append(candidateParams, []interface{}{c.DbID, c.Username, c.AppSecret, c.Lcid})
+	// 4. ApiService.Authenticate 兼容入口 (AppID/AppSecret 模式)
+	if c.AppID != "" && c.AppSecret != "" {
+		candidates = append(candidates, authCandidate{
+			Endpoint: "/Kingdee.BOS.WebApi.ServicesRepository.ApiService.Authenticate.common.kdsvc",
+			Params:   []interface{}{c.DbID, c.Username, c.AppID, c.AppSecret, c.Lcid},
+		})
 	}
 
-	if len(candidateParams) == 0 {
+	if len(candidates) == 0 {
 		return fmt.Errorf("未配置金蝶登录密码或应用密钥 (AppSecret)")
 	}
 
 	var lastErr error
-	for _, params := range candidateParams {
-		if err := c.tryAuthenticate(params); err == nil {
+	for _, cand := range candidates {
+		if err := c.tryAuthenticateUrl(cand.Endpoint, cand.Params); err == nil {
 			return nil
 		} else {
 			lastErr = err
