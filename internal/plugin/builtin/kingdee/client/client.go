@@ -7,9 +7,35 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"time"
 )
+
+// normalizeServerURL 自动规范化金蝶服务地址（确保以 /k3cloud 结尾）
+func normalizeServerURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		rawURL = "http://" + rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return strings.TrimRight(rawURL, "/")
+	}
+
+	path := strings.TrimRight(u.Path, "/")
+	idx := strings.Index(strings.ToLower(path), "/k3cloud")
+	if idx >= 0 {
+		path = path[:idx+len("/k3cloud")]
+	} else {
+		path = path + "/k3cloud"
+	}
+	u.Path = path
+	return strings.TrimRight(u.String(), "/")
+}
 
 // Client 金蝶云星空 Web API 客户端
 type Client struct {
@@ -29,7 +55,7 @@ func NewClient(serverURL, dbID, username, password, appID, appSecret string, lci
 	if lcid <= 0 {
 		lcid = 2052 // 默认简体中文
 	}
-	serverURL = strings.TrimRight(serverURL, "/")
+	serverURL = normalizeServerURL(serverURL)
 	return &Client{
 		ServerURL: serverURL,
 		DbID:      dbID,

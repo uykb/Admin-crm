@@ -63,11 +63,18 @@ func (r *TailscaleResolver) ResolveProxy(req *http.Request) (*url.URL, bool, err
 		return r.getProxyURL(), true, nil
 	}
 
-	// 2. 匹配 100.64.0.0/10 (Tailscale 预留 CGNAT 网段)
+	// 2. 匹配 100.64.0.0/10 (Tailscale 网段) 及 局域网私有 IP 网段 (192.168.x.x, 10.x.x.x, 172.16.x.x)
 	ip := net.ParseIP(hostname)
 	if ip != nil {
 		_, tsCIDR, _ := net.ParseCIDR("100.64.0.0/10")
-		if tsCIDR != nil && tsCIDR.Contains(ip) {
+		_, p192, _ := net.ParseCIDR("192.168.0.0/16")
+		_, p10, _ := net.ParseCIDR("10.0.0.0/8")
+		_, p172, _ := net.ParseCIDR("172.16.0.0/12")
+
+		if (tsCIDR != nil && tsCIDR.Contains(ip)) ||
+			(p192 != nil && p192.Contains(ip)) ||
+			(p10 != nil && p10.Contains(ip)) ||
+			(p172 != nil && p172.Contains(ip)) {
 			return r.getProxyURL(), true, nil
 		}
 	}
