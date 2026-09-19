@@ -298,11 +298,11 @@ func seedSettings(db *gorm.DB) {
 	}
 
 	settings := []model.SysSetting{
-		{Key: "site_name", Value: "广州耀威", IsPublic: true},
-		{Key: "logo_url", Value: "/uploads/brand/logo.png", IsPublic: true},
-		{Key: "primary_color", Value: "#1D64B4", IsPublic: true},
+		{Key: "site_name", Value: "ApeAdmin-Gin", IsPublic: true},
+		{Key: "logo_url", Value: "", IsPublic: true},
+		{Key: "primary_color", Value: "#5A67F5", IsPublic: true},
 		{Key: "admin_path", Value: "/admin", IsPublic: true},
-		{Key: "footer_text", Value: "Guangzhou YaoWei Plastic Co., Ltd © 2026", IsPublic: true},
+		{Key: "footer_text", Value: "ApeAdmin © 2026", IsPublic: true},
 		{Key: "login_bg", Value: "", IsPublic: true},
 		{Key: "sidebar_theme", Value: "light", IsPublic: true},
 	}
@@ -314,17 +314,9 @@ func seedSettings(db *gorm.DB) {
 
 // migrateMissingSettings 补齐缺失的品牌类设置项（不覆盖已有值）
 func migrateMissingSettings(db *gorm.DB) {
-	// 若 logo_url 缺失或为空，初始化为 /uploads/brand/logo.png
-	var logoSetting model.SysSetting
-	if err := db.Where("key = ?", "logo_url").First(&logoSetting).Error; err != nil {
-		db.Create(&model.SysSetting{Key: "logo_url", Value: "/uploads/brand/logo.png", IsPublic: true})
-	} else if logoSetting.Value == "" {
-		db.Model(&logoSetting).Update("value", "/uploads/brand/logo.png")
-	}
-
 	defaults := []model.SysSetting{
 		{Key: "admin_path", Value: "/admin", IsPublic: true},
-		{Key: "footer_text", Value: "Guangzhou YaoWei Plastic Co., Ltd © 2026", IsPublic: true},
+		{Key: "footer_text", Value: "ApeAdmin © 2026", IsPublic: true},
 		{Key: "login_bg", Value: "", IsPublic: true},
 		{Key: "sidebar_theme", Value: "light", IsPublic: true},
 	}
