@@ -24,6 +24,7 @@ import (
 	_ "apeadmin-gin/internal/plugin/builtin/dev_example"
 	_ "apeadmin-gin/internal/plugin/builtin/hikiot"
 	_ "apeadmin-gin/internal/plugin/builtin/tailscale"
+	_ "apeadmin-gin/internal/plugin/builtin/kingdee"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
