@@ -311,6 +311,17 @@ func chatNonStreamOnce(provider *model.SysAiProvider, model string, messages []m
 				"usage":      getMap(resp, "usage"),
 			}, nil
 		}
+		if provider.ProviderType == "gemini" || strings.Contains(strings.ToLower(modelName), "gemini") {
+			for idx, tc := range toolCalls {
+				if tc["extra_content"] == nil {
+					tc["extra_content"] = map[string]interface{}{
+						"google": map[string]interface{}{
+							"thought_signature": fmt.Sprintf("thought_sig_%d_%d", round, idx),
+						},
+					}
+				}
+			}
+		}
 		llmMessages = append(llmMessages, msg)
 		for _, tc := range toolCalls {
 			fnName := getString(getMap(tc, "function"), "name")
@@ -418,15 +429,26 @@ func streamChat(c *gin.Context, provider *model.SysAiProvider, model string, mes
 							"function": map[string]interface{}{"name": "", "arguments": ""},
 						})
 					}
+					// 保留除了 index 和 function 之外的所有额外元数据 (如 extra_content / thought_signature)
+					for k, v := range tc {
+						if k != "index" && k != "function" {
+							collectedToolCalls[idx][k] = v
+						}
+					}
 					if id := getString(tc, "id"); id != "" {
 						collectedToolCalls[idx]["id"] = id
 					}
 					fn := getMap(tc, "function")
+					currFn, _ := collectedToolCalls[idx]["function"].(map[string]interface{})
+					if currFn == nil {
+						currFn = map[string]interface{}{}
+						collectedToolCalls[idx]["function"] = currFn
+					}
 					if name := getString(fn, "name"); name != "" {
-						collectedToolCalls[idx]["function"].(map[string]interface{})["name"] = name
+						currFn["name"] = name
 					}
 					if args := getString(fn, "arguments"); args != "" {
-						collectedToolCalls[idx]["function"].(map[string]interface{})["arguments"] = args
+						currFn["arguments"] = getString(currFn, "arguments") + args
 					}
 				}
 			}
@@ -438,14 +460,25 @@ func streamChat(c *gin.Context, provider *model.SysAiProvider, model string, mes
 			return
 		}
 
-		// 补全 tool_calls 字段
+		// 补全 tool_calls 字段与适配 Gemini 必要的 extra_content/thought_signature
 		for idx, tc := range collectedToolCalls {
 			if getString(tc, "id") == "" {
 				tc["id"] = fmt.Sprintf("call_%d_%d", round, idx)
 			}
-			fn := tc["function"].(map[string]interface{})
+			fn, ok := tc["function"].(map[string]interface{})
+			if !ok || fn == nil {
+				fn = map[string]interface{}{}
+				tc["function"] = fn
+			}
 			if getString(fn, "arguments") == "" {
 				fn["arguments"] = "{}"
+			}
+			if tc["extra_content"] == nil && (provider.ProviderType == "gemini" || strings.Contains(strings.ToLower(modelName), "gemini")) {
+				tc["extra_content"] = map[string]interface{}{
+					"google": map[string]interface{}{
+						"thought_signature": fmt.Sprintf("thought_sig_%d_%d", round, idx),
+					},
+				}
 			}
 		}
 
