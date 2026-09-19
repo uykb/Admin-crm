@@ -188,14 +188,8 @@ func (c *Client) Authenticate() error {
 	return fmt.Errorf("金蝶登录未成功，服务器响应: %w", lastErr)
 }
 
-// ExecuteBillQuery 执行通用单据/表单列表查询
-func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error) {
-	// 先执行登录认证
-	if err := c.Authenticate(); err != nil {
-		return nil, err
-	}
-
-	url := c.ServerURL + "/Kingdee.BOS.WebApi.ServicesRepository.ApiService.ExecuteBillQuery.common.kdsvc"
+func (c *Client) tryExecuteBillQueryUrl(endpoint string, reqData BillQueryData) ([][]interface{}, error) {
+	url := c.ServerURL + endpoint
 
 	if reqData.Limit <= 0 {
 		reqData.Limit = 50
@@ -230,7 +224,7 @@ func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error
 	bodyBytes = bytes.TrimSpace(bodyBytes)
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("金蝶单据接口返回 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var rows [][]interface{}
@@ -268,8 +262,32 @@ func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error
 			return nil, fmt.Errorf("金蝶接口返回错误: %s", string(bodyBytes))
 		}
 
-		return nil, fmt.Errorf("解析金蝶数据响应失败: %w, 服务器原始响应内容: %s", err, string(bodyBytes))
+		return nil, fmt.Errorf("%s", string(bodyBytes))
 	}
 
 	return rows, nil
+}
+
+// ExecuteBillQuery 执行通用单据/表单列表查询（支持 DynamicFormService 与 ApiService 双 Service 降级）
+func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error) {
+	// 先执行登录认证
+	if err := c.Authenticate(); err != nil {
+		return nil, err
+	}
+
+	endpoints := []string{
+		"/Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery.common.kdsvc",
+		"/Kingdee.BOS.WebApi.ServicesRepository.ApiService.ExecuteBillQuery.common.kdsvc",
+	}
+
+	var lastErr error
+	for _, endpoint := range endpoints {
+		rows, err := c.tryExecuteBillQueryUrl(endpoint, reqData)
+		if err == nil {
+			return rows, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("解析金蝶数据响应失败，服务器原始响应内容: %w", lastErr)
 }
