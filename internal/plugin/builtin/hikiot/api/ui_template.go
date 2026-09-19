@@ -161,7 +161,11 @@ const HikUIHTML = `<!DOCTYPE html>
         const savingConfig = ref(false);
 
         const getAuthHeader = () => {
-          const token = localStorage.getItem('apeadmin_token') || localStorage.getItem('token') || '';
+          const urlParams = new URLSearchParams(window.location.search);
+          const token = urlParams.get('token') || localStorage.getItem('apeadmin_token') || localStorage.getItem('token') || '';
+          if (urlParams.get('token')) {
+            try { localStorage.setItem('apeadmin_token', urlParams.get('token')); } catch(e) {}
+          }
           return token ? { 'Authorization': 'Bearer ' + token } : {};
         };
 
