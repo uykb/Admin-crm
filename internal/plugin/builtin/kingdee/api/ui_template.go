@@ -155,17 +155,23 @@ const KingdeeUIHTML = `<!DOCTYPE html>
         <!-- 标签页 5：金蝶账套配置 -->
         <el-tab-pane label="金蝶账套 API 配置" name="config">
           <el-form :model="configForm" label-width="160px" style="max-width: 650px; margin-top: 15px;">
-            <el-form-item label="金蝶服务器地址" required>
+            <el-form-item label="金蝶服务地址" required>
               <el-input v-model="configForm.server_url" placeholder="内网地址如 http://192.168.1.50:8000/k3cloud/"></el-input>
             </el-form-item>
-            <el-form-item label="数据中心/账套 ID" required>
+            <el-form-item label="账套 ID (数据中心)" required>
               <el-input v-model="configForm.db_id" placeholder="如 60d1xxxxxx 或 db2024"></el-input>
             </el-form-item>
-            <el-form-item label="API 用户名" required>
+            <el-form-item label="登录用户" required>
               <el-input v-model="configForm.username" placeholder="金蝶集成专用账号或管理员"></el-input>
             </el-form-item>
-            <el-form-item label="API 密码" required>
-              <el-input v-model="configForm.password" type="password" show-password placeholder="密码"></el-input>
+            <el-form-item label="应用 ID (AppID)">
+              <el-input v-model="configForm.app_id" placeholder="Web API 注册分配的 AppID"></el-input>
+            </el-form-item>
+            <el-form-item label="应用密钥 (AppSecret)">
+              <el-input v-model="configForm.app_secret" type="password" show-password placeholder="应用 Secret（优先使用）"></el-input>
+            </el-form-item>
+            <el-form-item label="登录密码 (Password)">
+              <el-input v-model="configForm.password" type="password" show-password placeholder="未填 AppSecret 时使用账号密码"></el-input>
             </el-form-item>
             <el-form-item label="语言代码 (Lcid)">
               <el-input-number v-model="configForm.lcid" :min="1000" :max="9999" placeholder="2052"></el-input-number>
@@ -214,6 +220,8 @@ const KingdeeUIHTML = `<!DOCTYPE html>
           server_url: '',
           db_id: '',
           username: '',
+          app_id: '',
+          app_secret: '',
           password: '',
           lcid: 2052
         });

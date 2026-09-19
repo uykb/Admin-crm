@@ -17,12 +17,14 @@ type Client struct {
 	DbID       string
 	Username   string
 	Password   string
+	AppID      string
+	AppSecret  string
 	Lcid       int
 	HTTPClient *http.Client
 }
 
 // NewClient 实例化 Client 并自动装载 CookieJar 维护 Session
-func NewClient(serverURL, dbID, username, password string, lcid int) *Client {
+func NewClient(serverURL, dbID, username, password, appID, appSecret string, lcid int) *Client {
 	jar, _ := cookiejar.New(nil)
 	if lcid <= 0 {
 		lcid = 2052 // 默认简体中文
@@ -33,6 +35,8 @@ func NewClient(serverURL, dbID, username, password string, lcid int) *Client {
 		DbID:      dbID,
 		Username:  username,
 		Password:  password,
+		AppID:     appID,
+		AppSecret: appSecret,
 		Lcid:      lcid,
 		HTTPClient: &http.Client{
 			Jar:     jar,
@@ -44,21 +48,26 @@ func NewClient(serverURL, dbID, username, password string, lcid int) *Client {
 // Authenticate 账套登录鉴权（设置 Session Cookie）
 func (c *Client) Authenticate() error {
 	if c.ServerURL == "" {
-		return fmt.Errorf("未配置内网金蝶云星空服务器地址")
+		return fmt.Errorf("未配置内网金蝶云星空服务地址")
 	}
 	if c.DbID == "" || c.Username == "" {
-		return fmt.Errorf("未配置金蝶账套 ID 或用户名")
+		return fmt.Errorf("未配置金蝶账套 ID 或登录用户")
 	}
 
 	url := c.ServerURL + "/Kingdee.BOS.WebApi.ServicesRepository.ApiService.Authenticate.common.kdsvc"
 
+	// 优先使用 AppID + AppSecret (5 参数模式: [acctID, username, appID, appSecret, lcid])
+	var params []interface{}
+	if c.AppID != "" && c.AppSecret != "" {
+		params = []interface{}{c.DbID, c.Username, c.AppID, c.AppSecret, c.Lcid}
+	} else if c.AppSecret != "" {
+		params = []interface{}{c.DbID, c.Username, c.AppSecret, c.Lcid}
+	} else {
+		params = []interface{}{c.DbID, c.Username, c.Password, c.Lcid}
+	}
+
 	payload := map[string]interface{}{
-		"parameters": []interface{}{
-			c.DbID,
-			c.Username,
-			c.Password,
-			c.Lcid,
-		},
+		"parameters": params,
 	}
 
 	jsonBytes, err := json.Marshal(payload)

@@ -23,6 +23,8 @@ type ConfigDTO struct {
 	ServerURL string `json:"server_url"`
 	DbID      string `json:"db_id"`
 	Username  string `json:"username"`
+	AppID     string `json:"app_id"`
+	AppSecret string `json:"app_secret"`
 	Password  string `json:"password"`
 	Lcid      int    `json:"lcid"`
 }
@@ -50,6 +52,8 @@ func (s *KingdeeService) GetConfig() (*ConfigDTO, error) {
 		ServerURL: cfgMap["kingdee_server_url"],
 		DbID:      cfgMap["kingdee_db_id"],
 		Username:  cfgMap["kingdee_username"],
+		AppID:     cfgMap["kingdee_app_id"],
+		AppSecret: cfgMap["kingdee_app_secret"],
 		Password:  cfgMap["kingdee_password"],
 		Lcid:      lcid,
 	}, nil
@@ -70,6 +74,8 @@ func (s *KingdeeService) SaveConfig(cfg *ConfigDTO) error {
 		"kingdee_server_url": cfg.ServerURL,
 		"kingdee_db_id":      cfg.DbID,
 		"kingdee_username":   cfg.Username,
+		"kingdee_app_id":     cfg.AppID,
+		"kingdee_app_secret": cfg.AppSecret,
 		"kingdee_password":   cfg.Password,
 		"kingdee_lcid":       lcidStr,
 	}
@@ -93,12 +99,12 @@ func (s *KingdeeService) getClient() (*kdclient.Client, error) {
 		return nil, err
 	}
 	if cfg.ServerURL == "" {
-		return nil, fmt.Errorf("未配置内网金蝶云星空服务器地址，请先在配置中填写")
+		return nil, fmt.Errorf("未配置内网金蝶云星空服务地址，请先在配置中填写")
 	}
 	if cfg.DbID == "" || cfg.Username == "" {
-		return nil, fmt.Errorf("未配置金蝶账套 ID 或用户名")
+		return nil, fmt.Errorf("未配置金蝶账套 ID 或登录用户")
 	}
-	return kdclient.NewClient(cfg.ServerURL, cfg.DbID, cfg.Username, cfg.Password, cfg.Lcid), nil
+	return kdclient.NewClient(cfg.ServerURL, cfg.DbID, cfg.Username, cfg.Password, cfg.AppID, cfg.AppSecret, cfg.Lcid), nil
 }
 
 // TestConnection 测试连通性
