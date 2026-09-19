@@ -72,6 +72,7 @@ func Run(configPath string) error {
 	core.SetConfig(cfg)
 	core.SetDB(db)
 	core.SetLogger(logger)
+	core.InitRedis()
 	core.SeedAiProvider(db)
 
 	// 5. （已在 4.5 注入容器）
