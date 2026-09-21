@@ -193,12 +193,20 @@ type DoorControlParam struct {
 
 // AttendanceRecordDTO 考勤打卡记录
 type AttendanceRecordDTO struct {
-	PersonID   string `json:"personId"`
-	PersonName string `json:"personName"`
-	JobNo      string `json:"jobNo"`
-	ClockTime  string `json:"clockTime"`
-	DoorName   string `json:"doorName"`
-	VerifyMode int    `json:"verifyMode"` // 验证模式：1 人脸, 2 刷卡, 3 密码等
+	PersonNo        string `json:"personNo"`
+	PersonID        string `json:"personId"`
+	PersonName      string `json:"personName"`
+	JobNumber       string `json:"jobNumber"`
+	JobNo           string `json:"jobNo"`
+	DepartmentName  string `json:"departmentName"`
+	DepartmentNo    string `json:"departmentNo"`
+	AttendanceDate  string `json:"attendanceDate"`
+	Workday         string `json:"workday"`
+	ClockTime       string `json:"clockTime"`
+	DeviceSerial    string `json:"deviceSerial"`
+	DeviceName      string `json:"deviceName"`
+	Address         string `json:"address"`
+	VerifyMode      int    `json:"verifyMode"`
 }
 
 // PageResponse 分页查询数据结构

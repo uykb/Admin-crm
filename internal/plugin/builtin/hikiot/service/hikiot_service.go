@@ -233,12 +233,29 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 		if errRec == nil && len(records) > 0 {
 			for _, r := range records {
 				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
+				if t.IsZero() {
+					t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
+				}
+
+				pID := r.PersonNo
+				if pID == "" {
+					pID = r.PersonID
+				}
+				jNo := r.JobNumber
+				if jNo == "" {
+					jNo = r.JobNo
+				}
+				devName := r.DeviceName
+				if devName == "" {
+					devName = r.Address
+				}
+
 				item := hkmodel.HkAttendance{
-					PersonID:   r.PersonID,
+					PersonID:   pID,
 					PersonName: r.PersonName,
-					JobNo:      r.JobNo,
+					JobNo:      jNo,
 					ClockTime:  t,
-					DoorName:   r.DoorName,
+					DoorName:   devName,
 					VerifyMode: r.VerifyMode,
 				}
 				s.db.Create(&item)

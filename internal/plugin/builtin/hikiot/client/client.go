@@ -321,31 +321,42 @@ func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	return nil
 }
 
-// GetAttendanceRecords 查询考勤刷卡记录（海康互联云端）
+// GetAttendanceRecords 查询考勤原始打卡记录（海康互联云端）
 func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRecordDTO, error) {
+	// 格式化日期为 YYYY-MM-DD
+	beginDate := startTime
+	if idx := strings.Index(beginDate, " "); idx > 0 {
+		beginDate = beginDate[:idx]
+	}
+	if idx := strings.Index(beginDate, "T"); idx > 0 {
+		beginDate = beginDate[:idx]
+	}
+
+	endDate := endTime
+	if idx := strings.Index(endDate, " "); idx > 0 {
+		endDate = endDate[:idx]
+	}
+	if idx := strings.Index(endDate, "T"); idx > 0 {
+		endDate = endDate[:idx]
+	}
+
+	if beginDate == "" {
+		beginDate = time.Now().Format("2006-01-02")
+	}
+	if endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+	}
+
+	payload := map[string]interface{}{
+		"beginDate":             beginDate,
+		"endDate":               endDate,
+		"page":                  1,
+		"size":                  100,
+		"containsDeletedPerson": true,
+	}
+
 	var resp BaseResponse
-	err := c.DoRequest("GET", "/attendance/v1/event/page", map[string]interface{}{
-		"startTime": startTime,
-		"endTime":   endTime,
-		"pageNo":    1,
-		"pageSize":  1000,
-	}, &resp)
-	if err != nil {
-		err = c.DoRequest("POST", "/attendance/v1/event/page", map[string]interface{}{
-			"startTime": startTime,
-			"endTime":   endTime,
-			"pageNo":    1,
-			"pageSize":  1000,
-		}, &resp)
-	}
-	if err != nil {
-		err = c.DoRequest("POST", "/artemis/api/acs/v2/door/events", map[string]interface{}{
-			"startTime": startTime,
-			"endTime":   endTime,
-			"pageNo":    1,
-			"pageSize":  1000,
-		}, &resp)
-	}
+	err := c.DoRequest("POST", "/attendance/v1/origin-record/page", payload, &resp)
 	if err != nil {
 		return nil, err
 	}
