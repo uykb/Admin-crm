@@ -40,7 +40,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, registerPlugins PluginRou
 		// refresh 独立于 access token：用 refresh token 换新 token，无需登录态
 		auth.POST("/refresh", middleware.RateLimit("refresh", 20, time.Minute), (&AuthHandler{}).RefreshToken)
 		public.GET("/settings/public", GetPublicSettings)
-		public.GET("/ip", (&SystemHandler{}).GetServerIP)
 	}
 
 	// ─── 认证路由（仅登录）───
@@ -128,7 +127,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, registerPlugins PluginRou
 		systemGroup := perm.Group("/system")
 		sysH := &SystemHandler{}
 		systemGroup.GET("/version", middleware.RequirePermission("system:setting:list"), sysH.Version)
-		systemGroup.GET("/ip", sysH.GetServerIP)
 		systemGroup.POST("/update", middleware.RequirePermission("system:setting:edit"), sysH.Update)
 
 		// 文件管理
