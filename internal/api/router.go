@@ -102,6 +102,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, registerPlugins PluginRou
 		plugins.GET("/:id/config", middleware.RequirePermission("system:plugin:config"), pluginH.GetConfig)
 		plugins.PUT("/:id/config", middleware.RequirePermission("system:plugin:config"), pluginH.UpdateConfig)
 		plugins.POST("/:id/test", middleware.RequirePermission("system:plugin:config"), pluginH.TestConfig)
+		plugins.POST("/test/:name", middleware.RequirePermission("system:plugin:config"), pluginH.TestConfigByName)
 		plugins.POST("/upload", middleware.RequirePermission("system:plugin:upload"), pluginH.Upload)
 		plugins.POST("/restart", middleware.RequirePermission("system:plugin:restart"), pluginH.Restart)
 		plugins.DELETE("/:id", middleware.RequirePermission("system:plugin:delete"), pluginH.Delete)

@@ -163,6 +163,33 @@ func (h *PluginHandler) TestConfig(c *gin.Context) {
 	c.JSON(http.StatusBadRequest, response.Error(400, "该插件未提供连通性测试服务"))
 }
 
+// TestConfigByName 按插件标识名测试 API 连通性 (如 POST /api/v1/plugins/test/hikiot)
+func (h *PluginHandler) TestConfigByName(c *gin.Context) {
+	name := c.Param("name")
+	p := plugin.GetPluginByName(name)
+	if p == nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "插件未加载: "+name))
+		return
+	}
+
+	if cp, ok := p.(plugin.ConfigurablePlugin); ok {
+		if err := cp.TestConnection(); err != nil {
+			c.JSON(http.StatusOK, response.Success(gin.H{
+				"ok":    false,
+				"error": err.Error(),
+			}))
+			return
+		}
+		c.JSON(http.StatusOK, response.Success(gin.H{
+			"ok":      true,
+			"message": "API 连通性测试成功！通道畅通。",
+		}))
+		return
+	}
+
+	c.JSON(http.StatusBadRequest, response.Error(400, "该插件未提供连通性测试服务"))
+}
+
 // Upload 上传 ZIP 插件包（L2 声明式清单插件）
 func (h *PluginHandler) Upload(c *gin.Context) {
 	cfg := core.GetConfig()
