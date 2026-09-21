@@ -208,6 +208,12 @@ func (p *HikPlugin) OnConfigUpdate(configJSON string) error {
 	return svc.SaveConfig(baseURL, appKey, appSecret)
 }
 
+func (p *HikPlugin) TestConnection() error {
+	db := core.GetDB()
+	svc := hikservice.NewHikService(db)
+	return svc.TestConnection()
+}
+
 func init() {
 	plugin.Register(&HikPlugin{})
 }

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
 	"apeadmin-gin/internal/model"
@@ -97,19 +98,50 @@ func (s *HikService) ListDoors() ([]hkmodel.HkDoor, error) {
 	return list, nil
 }
 
+// TestConnection 测试海康开放平台 API 连通性与密钥权限
+func (s *HikService) TestConnection() error {
+	cli, err := s.GetClient()
+	if err != nil {
+		return err
+	}
+	if cli.AppKey == "" || cli.AppSecret == "" {
+		return fmt.Errorf("未配置海康 AppKey 或 AppSecret，请先配置凭据")
+	}
+
+	// 优先调用门禁列表测试鉴权
+	doors, err := cli.GetDoors()
+	if err != nil {
+		// 备用尝试调用组织列表测试
+		_, errOrg := cli.GetOrgs()
+		if errOrg != nil {
+			return fmt.Errorf("海康 API 鉴权测试失败: %w", err)
+		}
+	}
+	_ = doors
+	return nil
+}
+
 // SyncDoors 同步门禁设备列表
 func (s *HikService) SyncDoors() (int, error) {
 	cli, err := s.GetClient()
 	if err != nil {
 		return 0, err
 	}
+	if cli.AppKey == "" || cli.AppSecret == "" {
+		return 0, fmt.Errorf("未配置海康 AppKey 或 AppSecret，请先在插件配置中填写海康凭据")
+	}
 
 	doors, err := cli.GetDoors()
-	if err != nil || len(doors) == 0 {
-		// 若暂未调通真实 API，初始化沙箱数据
-		_, _ = s.ListDoors()
-		return 4, nil
+	if err != nil {
+		return 0, fmt.Errorf("海康 API 门禁同步失败: %w", err)
 	}
+
+	if len(doors) == 0 {
+		return 0, fmt.Errorf("海康 API 返回 0 个门禁点，请确认海康平台已关联门禁资源与操作权限")
+	}
+
+	// 真实数据获取成功，删除沙箱 Mock 门禁数据
+	s.db.Exec("DELETE FROM hk_door WHERE door_index_code LIKE 'D100%'")
 
 	count := 0
 	for _, dto := range doors {

@@ -25,11 +25,12 @@ type Plugin interface {
 	OnUnload()
 }
 
-// ConfigurablePlugin 扩展插件接口：支持导出/设置可视化 JSON 配置
+// ConfigurablePlugin 扩展插件接口：支持导出/设置可视化 JSON 配置与连通性测试
 type ConfigurablePlugin interface {
 	Plugin
 	GetConfigJSON() (string, error)
 	OnConfigUpdate(configJSON string) error
+	TestConnection() error
 }
 
 // PluginRouter 插件路由注册辅助

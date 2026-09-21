@@ -130,6 +130,39 @@ func (h *PluginHandler) UpdateConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, response.SuccessMsg("配置已保存"))
 }
 
+// TestConfig 测试插件 API 连通性
+func (h *PluginHandler) TestConfig(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	pluginRec, err := dal.GetPluginByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, response.Error(404, "插件不存在"))
+		return
+	}
+
+	p := plugin.GetPluginByName(pluginRec.Name)
+	if p == nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "插件未加载"))
+		return
+	}
+
+	if cp, ok := p.(plugin.ConfigurablePlugin); ok {
+		if err := cp.TestConnection(); err != nil {
+			c.JSON(http.StatusOK, response.Success(gin.H{
+				"ok":    false,
+				"error": err.Error(),
+			}))
+			return
+		}
+		c.JSON(http.StatusOK, response.Success(gin.H{
+			"ok":      true,
+			"message": "API 连通性测试成功！通道畅通。",
+		}))
+		return
+	}
+
+	c.JSON(http.StatusBadRequest, response.Error(400, "该插件未提供连通性测试服务"))
+}
+
 // Upload 上传 ZIP 插件包（L2 声明式清单插件）
 func (h *PluginHandler) Upload(c *gin.Context) {
 	cfg := core.GetConfig()

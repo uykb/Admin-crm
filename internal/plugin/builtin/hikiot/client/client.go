@@ -2,10 +2,12 @@ package client
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,15 +23,20 @@ type Client struct {
 
 // NewClient 创建海康客户端实例
 func NewClient(baseURL, appKey, appSecret string) *Client {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		baseURL = "https://open.hikiot.com"
 	}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	return &Client{
 		BaseURL:   baseURL,
-		AppKey:    appKey,
-		AppSecret: appSecret,
+		AppKey:    strings.TrimSpace(appKey),
+		AppSecret: strings.TrimSpace(appSecret),
 		HTTPClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Transport: tr,
+			Timeout:   15 * time.Second,
 		},
 	}
 }
@@ -91,6 +98,14 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("海康 API 返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 校验海康 Artemis API 返回的业务响应 code
+	var baseResp BaseResponse
+	if json.Unmarshal(respBody, &baseResp) == nil {
+		if baseResp.Code != "0" && baseResp.Code != "200" && baseResp.Code != "" {
+			return fmt.Errorf("海康 API 返回错误代码 [%s]: %s", baseResp.Code, baseResp.Msg)
+		}
 	}
 
 	if result != nil {

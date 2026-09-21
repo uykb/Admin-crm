@@ -261,6 +261,13 @@ func (p *TailscalePlugin) OnConfigUpdate(configJSON string) error {
 	return nil
 }
 
+func (p *TailscalePlugin) TestConnection() error {
+	db := core.GetDB()
+	svc := tsservice.NewTailscaleService(db)
+	_, err := svc.SyncDevices()
+	return err
+}
+
 func init() {
 	plugin.Register(&TailscalePlugin{})
 }

@@ -192,6 +192,12 @@ func (p *KingdeePlugin) OnConfigUpdate(configJSON string) error {
 	return svc.SaveConfig(&cfg)
 }
 
+func (p *KingdeePlugin) TestConnection() error {
+	db := core.GetDB()
+	svc := kdservice.NewKingdeeService(db)
+	return svc.TestConnection()
+}
+
 func init() {
 	plugin.Register(&KingdeePlugin{})
 }
