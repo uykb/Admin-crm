@@ -58,16 +58,26 @@ func (h *PluginHandler) Toggle(c *gin.Context) {
 // GetConfig 获取插件配置
 func (h *PluginHandler) GetConfig(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-	plugin, err := dal.GetPluginByID(uint(id))
+	pluginRec, err := dal.GetPluginByID(uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, response.Error(404, "插件不存在"))
 		return
 	}
-	config := "{}"
-	if plugin.Config != nil {
-		config = *plugin.Config
+
+	configStr := "{}"
+	if pluginRec.Config != nil && *pluginRec.Config != "" && *pluginRec.Config != "{}" {
+		configStr = *pluginRec.Config
+	} else if p := plugin.GetPluginByName(pluginRec.Name); p != nil {
+		if cp, ok := p.(plugin.ConfigurablePlugin); ok {
+			if cfgJSON, err := cp.GetConfigJSON(); err == nil && cfgJSON != "" {
+				configStr = cfgJSON
+				pluginRec.Config = &configStr
+				_ = dal.UpdatePlugin(pluginRec)
+			}
+		}
 	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"config": config}))
+
+	c.JSON(http.StatusOK, response.Success(gin.H{"config": configStr}))
 }
 
 // UpdateConfig 更新插件配置
@@ -80,17 +90,27 @@ func (h *PluginHandler) UpdateConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
 		return
 	}
-	plugin, err := dal.GetPluginByID(uint(id))
+	pluginRec, err := dal.GetPluginByID(uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, response.Error(404, "插件不存在"))
 		return
 	}
 	cfg := req.Config
-	plugin.Config = &cfg
-	if err := dal.UpdatePlugin(plugin); err != nil {
+	pluginRec.Config = &cfg
+	if err := dal.UpdatePlugin(pluginRec); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "更新失败"))
 		return
 	}
+
+	// 同步调用插件 OnConfigUpdate Hook
+	if p := plugin.GetPluginByName(pluginRec.Name); p != nil {
+		if cp, ok := p.(plugin.ConfigurablePlugin); ok {
+			if err := cp.OnConfigUpdate(cfg); err != nil {
+				log.Printf("[Plugin:%s] OnConfigUpdate 失败: %v", p.Name(), err)
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, response.SuccessMsg("配置已保存"))
 }
 

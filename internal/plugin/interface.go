@@ -25,6 +25,13 @@ type Plugin interface {
 	OnUnload()
 }
 
+// ConfigurablePlugin 扩展插件接口：支持导出/设置可视化 JSON 配置
+type ConfigurablePlugin interface {
+	Plugin
+	GetConfigJSON() (string, error)
+	OnConfigUpdate(configJSON string) error
+}
+
 // PluginRouter 插件路由注册辅助
 type PluginRouter struct {
 	Public *gin.RouterGroup

@@ -25,3 +25,15 @@ func GetRegistered() []Plugin {
 	copy(result, globalRegistry.plugins)
 	return result
 }
+
+// GetPluginByName 根据插件标识名查找已注册插件
+func GetPluginByName(name string) Plugin {
+	globalRegistry.mu.RLock()
+	defer globalRegistry.mu.RUnlock()
+	for _, p := range globalRegistry.plugins {
+		if p.Name() == name {
+			return p
+		}
+	}
+	return nil
+}

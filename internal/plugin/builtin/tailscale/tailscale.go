@@ -1,6 +1,7 @@
 package tailscale
 
 import (
+	"encoding/json"
 	"log"
 
 	"apeadmin-gin/internal/core"
@@ -12,6 +13,7 @@ import (
 	tsmcp "apeadmin-gin/internal/plugin/builtin/tailscale/mcp"
 	tsmodel "apeadmin-gin/internal/plugin/builtin/tailscale/model"
 	tsproxy "apeadmin-gin/internal/plugin/builtin/tailscale/proxy"
+	tsservice "apeadmin-gin/internal/plugin/builtin/tailscale/service"
 
 	"gorm.io/gorm"
 )
@@ -177,6 +179,86 @@ func (p *TailscalePlugin) Uninstall() error {
 
 func (p *TailscalePlugin) OnUnload() {
 	netproxy.UnregisterResolver("tailscale")
+}
+
+type tailscaleConfigExport struct {
+	Tailnet      string `json:"tailnet"`
+	APIKey       string `json:"api_key"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	ProxyURL     string `json:"proxy_url"`
+}
+
+func (p *TailscalePlugin) GetConfigJSON() (string, error) {
+	db := core.GetDB()
+	svc := tsservice.NewTailscaleService(db)
+	cfg, err := svc.GetConfig()
+	if err != nil {
+		return "", err
+	}
+	exp := tailscaleConfigExport{
+		Tailnet:      cfg.Tailnet,
+		APIKey:       cfg.APIKey,
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+	}
+	if db != nil {
+		var tsCfg tsmodel.TsConfig
+		if err := db.Where("key = ?", "tailscale_proxy_url").First(&tsCfg).Error; err == nil {
+			exp.ProxyURL = tsCfg.Value
+		}
+	}
+	b, err := json.MarshalIndent(exp, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (p *TailscalePlugin) OnConfigUpdate(configJSON string) error {
+	var m map[string]string
+	if err := json.Unmarshal([]byte(configJSON), &m); err != nil {
+		return err
+	}
+	tailnet := m["tailnet"]
+	if tailnet == "" {
+		tailnet = m["tailscale_tailnet"]
+	}
+	apiKey := m["api_key"]
+	if apiKey == "" {
+		apiKey = m["tailscale_api_key"]
+	}
+	clientID := m["client_id"]
+	if clientID == "" {
+		clientID = m["tailscale_client_id"]
+	}
+	clientSecret := m["client_secret"]
+	if clientSecret == "" {
+		clientSecret = m["tailscale_client_secret"]
+	}
+	proxyURL := m["proxy_url"]
+	if proxyURL == "" {
+		proxyURL = m["tailscale_proxy_url"]
+	}
+
+	db := core.GetDB()
+	svc := tsservice.NewTailscaleService(db)
+	if err := svc.SaveConfig(tailnet, apiKey, clientID, clientSecret); err != nil {
+		return err
+	}
+	if db != nil && proxyURL != "" {
+		var tsCfg tsmodel.TsConfig
+		if err := db.Where("key = ?", "tailscale_proxy_url").First(&tsCfg).Error; err == nil {
+			tsCfg.Value = proxyURL
+			db.Save(&tsCfg)
+		} else {
+			db.Create(&tsmodel.TsConfig{Key: "tailscale_proxy_url", Value: proxyURL})
+		}
+		// 刷新代代理缓存
+		resolver := tsproxy.NewTailscaleResolver(db)
+		resolver.RefreshConfig()
+	}
+	return nil
 }
 
 func init() {

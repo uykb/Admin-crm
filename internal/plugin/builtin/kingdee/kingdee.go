@@ -1,6 +1,7 @@
 package kingdee
 
 import (
+	"encoding/json"
 	"log"
 
 	"apeadmin-gin/internal/core"
@@ -10,6 +11,7 @@ import (
 	kdapi "apeadmin-gin/internal/plugin/builtin/kingdee/api"
 	kdmcp "apeadmin-gin/internal/plugin/builtin/kingdee/mcp"
 	kdmodel "apeadmin-gin/internal/plugin/builtin/kingdee/model"
+	kdservice "apeadmin-gin/internal/plugin/builtin/kingdee/service"
 
 	"gorm.io/gorm"
 )
@@ -165,6 +167,30 @@ func (p *KingdeePlugin) Uninstall() error {
 }
 
 func (p *KingdeePlugin) OnUnload() {}
+
+func (p *KingdeePlugin) GetConfigJSON() (string, error) {
+	db := core.GetDB()
+	svc := kdservice.NewKingdeeService(db)
+	cfg, err := svc.GetConfig()
+	if err != nil {
+		return "", err
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (p *KingdeePlugin) OnConfigUpdate(configJSON string) error {
+	var cfg kdservice.ConfigDTO
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return err
+	}
+	db := core.GetDB()
+	svc := kdservice.NewKingdeeService(db)
+	return svc.SaveConfig(&cfg)
+}
 
 func init() {
 	plugin.Register(&KingdeePlugin{})

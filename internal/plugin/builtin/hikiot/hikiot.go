@@ -1,6 +1,7 @@
 package hikiot
 
 import (
+	"encoding/json"
 	"log"
 
 	"apeadmin-gin/internal/core"
@@ -10,6 +11,7 @@ import (
 	hikapi "apeadmin-gin/internal/plugin/builtin/hikiot/api"
 	hikmcp "apeadmin-gin/internal/plugin/builtin/hikiot/mcp"
 	hikmodel "apeadmin-gin/internal/plugin/builtin/hikiot/model"
+	hikservice "apeadmin-gin/internal/plugin/builtin/hikiot/service"
 
 	"gorm.io/gorm"
 )
@@ -167,6 +169,43 @@ func (p *HikPlugin) Uninstall() error {
 
 func (p *HikPlugin) OnUnload() {
 	log.Println("[Plugin:hikiot] 插件已卸载")
+}
+
+func (p *HikPlugin) GetConfigJSON() (string, error) {
+	db := core.GetDB()
+	svc := hikservice.NewHikService(db)
+	cfg, err := svc.GetConfig()
+	if err != nil {
+		return "", err
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (p *HikPlugin) OnConfigUpdate(configJSON string) error {
+	var m map[string]string
+	if err := json.Unmarshal([]byte(configJSON), &m); err != nil {
+		return err
+	}
+	baseURL := m["base_url"]
+	if baseURL == "" {
+		baseURL = m["hikiot_base_url"]
+	}
+	appKey := m["app_key"]
+	if appKey == "" {
+		appKey = m["hikiot_app_key"]
+	}
+	appSecret := m["app_secret"]
+	if appSecret == "" {
+		appSecret = m["hikiot_app_secret"]
+	}
+
+	db := core.GetDB()
+	svc := hikservice.NewHikService(db)
+	return svc.SaveConfig(baseURL, appKey, appSecret)
 }
 
 func init() {
