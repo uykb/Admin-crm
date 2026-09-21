@@ -103,11 +103,12 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 		return fmt.Errorf("海康 API 返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	// 校验海康 Artemis API 返回的业务响应 code
+	// 校验海康 API 返回的业务响应 code
 	var baseResp BaseResponse
 	if json.Unmarshal(respBody, &baseResp) == nil {
-		if baseResp.Code != "0" && baseResp.Code != "200" && baseResp.Code != "" {
-			return fmt.Errorf("海康 API 返回错误代码 [%s]: %s", baseResp.Code, baseResp.Msg)
+		cStr := baseResp.Code.String()
+		if cStr != "0" && cStr != "200" && cStr != "" {
+			return fmt.Errorf("海康 API 返回错误代码 [%s]: %s", cStr, baseResp.Msg)
 		}
 	}
 
@@ -202,11 +203,11 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 }
 
 // ExchangeAppToken 海康互联云端获取 App Token 测试鉴权
-func (c *Client) ExchangeAppToken() error {
+func (c *Client) ExchangeAppToken() (*AppTokenData, error) {
 	var resp struct {
-		Code string      `json:"code"`
-		Msg  string      `json:"msg"`
-		Data interface{} `json:"data"`
+		Code FlexibleCode `json:"code"`
+		Msg  string       `json:"msg"`
+		Data AppTokenData  `json:"data"`
 	}
 
 	payload := map[string]interface{}{
@@ -218,13 +219,14 @@ func (c *Client) ExchangeAppToken() error {
 	if err != nil {
 		errV1 := c.DoRequest("POST", "/v1/auth/exchangeAppToken", payload, &resp)
 		if errV1 != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	if resp.Code != "0" && resp.Code != "200" && resp.Code != "" {
-		return fmt.Errorf("海康云端 API 认证响应 [%s]: %s", resp.Code, resp.Msg)
+	cStr := resp.Code.String()
+	if cStr != "0" && cStr != "200" && cStr != "" {
+		return nil, fmt.Errorf("海康云端 API 认证响应 [%s]: %s", cStr, resp.Msg)
 	}
 
-	return nil
+	return &resp.Data, nil
 }
