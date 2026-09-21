@@ -34,7 +34,7 @@ func (s *HikService) GetClient() (*client.Client, error) {
 	appSecret = sSecret.Value
 
 	if baseURL == "" {
-		baseURL = "https://open.hikiot.com"
+		baseURL = "https://open-api.hikiot.com"
 	}
 
 	return client.NewClient(baseURL, appKey, appSecret), nil
@@ -49,7 +49,7 @@ func (s *HikService) GetConfig() (map[string]string, error) {
 
 	baseURL := sBase.Value
 	if baseURL == "" {
-		baseURL = "https://open.hikiot.com"
+		baseURL = "https://open-api.hikiot.com"
 	}
 
 	return map[string]string{
@@ -78,42 +78,25 @@ func (s *HikService) SaveConfig(baseURL, appKey, appSecret string) error {
 	return nil
 }
 
-// ListDoors 获取门禁设备点列表
+// ListDoors 获取门禁设备点列表（纯真实数据）
 func (s *HikService) ListDoors() ([]hkmodel.HkDoor, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_door WHERE door_index_code LIKE 'D100%'")
+
 	var list []hkmodel.HkDoor
 	s.db.Order("id ASC").Find(&list)
 
-	// 检查是否包含沙箱 Mock 门禁，或者数据库为空
-	hasMock := false
-	for _, d := range list {
-		if d.DoorIndexCode == "D1001" || d.DoorIndexCode == "D1002" {
-			hasMock = true
-			break
-		}
-	}
-
-	// 如果有真实凭据且（数据库为空或包含 Mock），自动触发真实 API 同步
+	// 如果数据库为空，尝试自动触发真实 API 同步
 	cli, errCli := s.GetClient()
-	if (len(list) == 0 || hasMock) && errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
+	if len(list) == 0 && errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
 		_, errSync := s.SyncDoors()
 		if errSync == nil {
-			var realList []hkmodel.HkDoor
-			s.db.Order("id ASC").Find(&realList)
-			return realList, nil
+			s.db.Order("id ASC").Find(&list)
 		}
 	}
 
-	if len(list) == 0 {
-		mockDoors := []hkmodel.HkDoor{
-			{DoorIndexCode: "D1001", DoorName: "一楼办公区主大门", ChannelNo: 1, Status: 1},
-			{DoorIndexCode: "D1002", DoorName: "二楼研发中心西门", ChannelNo: 2, Status: 1},
-			{DoorIndexCode: "D1003", DoorName: "三楼财务室安全门", ChannelNo: 3, Status: 0},
-			{DoorIndexCode: "D1004", DoorName: "负一层地库通道门", ChannelNo: 4, Status: 1},
-		}
-		for _, d := range mockDoors {
-			_ = s.db.Create(&d).Error
-		}
-		return mockDoors, nil
+	if list == nil {
+		list = []hkmodel.HkDoor{}
 	}
 	return list, nil
 }
@@ -140,8 +123,11 @@ func (s *HikService) TestConnection() error {
 	return nil
 }
 
-// SyncDoors 同步门禁设备列表
+// SyncDoors 同步门禁设备列表（纯真实数据）
 func (s *HikService) SyncDoors() (int, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_door WHERE door_index_code LIKE 'D100%'")
+
 	cli, err := s.GetClient()
 	if err != nil {
 		return 0, err
@@ -154,9 +140,6 @@ func (s *HikService) SyncDoors() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("海康 API 门禁同步失败: %w", err)
 	}
-
-	// 真实 API 请求成功，清除 Mock 沙箱门禁数据
-	s.db.Exec("DELETE FROM hk_door WHERE door_index_code LIKE 'D100%'")
 
 	if len(doors) == 0 {
 		return 0, nil
@@ -195,8 +178,11 @@ func (s *HikService) ControlDoor(doorIndexCode string, command int) error {
 	return nil
 }
 
-// QueryAttendance 查询落库考勤记录
+// QueryAttendance 查询落库考勤记录（纯真实数据）
 func (s *HikService) QueryAttendance(personName string, startDate, endDate string) ([]hkmodel.HkAttendance, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_attendance WHERE person_id LIKE 'P800%'")
+
 	var list []hkmodel.HkAttendance
 	query := s.db.Model(&hkmodel.HkAttendance{})
 
@@ -231,7 +217,6 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 		}
 		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
 		if errRec == nil && len(records) > 0 {
-			s.db.Exec("DELETE FROM hk_attendance WHERE person_id LIKE 'P800%'")
 			for _, r := range records {
 				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
 				item := hkmodel.HkAttendance{
@@ -249,29 +234,21 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 		}
 	}
 
-	if len(list) == 0 && personName == "" && startDate == "" {
-		now := time.Now()
-		mockAtt := []hkmodel.HkAttendance{
-			{PersonID: "P8001", PersonName: "张伟", JobNo: "HK8001", ClockTime: now.Add(-30 * time.Minute), DoorName: "一楼办公区主大门", VerifyMode: 1},
-			{PersonID: "P8002", PersonName: "李娜", JobNo: "HK8002", ClockTime: now.Add(-1 * time.Hour), DoorName: "二楼研发中心西门", VerifyMode: 2},
-			{PersonID: "P8003", PersonName: "王强", JobNo: "HK8003", ClockTime: now.Add(-2 * time.Hour), DoorName: "一楼办公区主大门", VerifyMode: 1},
-			{PersonID: "P8004", PersonName: "赵敏", JobNo: "HK8004", ClockTime: now.Add(-3 * time.Hour), DoorName: "负一层地库通道门", VerifyMode: 1},
-		}
-		for _, a := range mockAtt {
-			_ = s.db.Create(&a).Error
-		}
-		return mockAtt, nil
+	if list == nil {
+		list = []hkmodel.HkAttendance{}
 	}
 	return list, err
 }
 
-// SyncOrgs 同步组织架构
+// SyncOrgs 同步组织架构（纯真实数据）
 func (s *HikService) SyncOrgs() (int, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_org WHERE org_index_code LIKE 'O10%'")
+
 	cli, err := s.GetClient()
 	if err == nil && cli.AppKey != "" {
 		orgs, err := cli.GetOrgs()
 		if err == nil {
-			s.db.Exec("DELETE FROM hk_org WHERE org_index_code LIKE 'O10%'")
 			count := 0
 			for _, dto := range orgs {
 				item := hkmodel.HkOrg{
@@ -288,29 +265,18 @@ func (s *HikService) SyncOrgs() (int, error) {
 			return count, nil
 		}
 	}
-	// 沙箱 Mock 数据
-	mockOrgs := []hkmodel.HkOrg{
-		{OrgIndexCode: "O100", OrgName: "集团总部", ParentOrgIndexCode: "0"},
-		{OrgIndexCode: "O101", OrgName: "研发中心", ParentOrgIndexCode: "O100"},
-		{OrgIndexCode: "O102", OrgName: "运营管理部", ParentOrgIndexCode: "O100"},
-		{OrgIndexCode: "O103", OrgName: "行政后勤部", ParentOrgIndexCode: "O100"},
-	}
-	for _, o := range mockOrgs {
-		_ = s.db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "org_index_code"}},
-			DoUpdates: clause.AssignmentColumns([]string{"org_name"}),
-		}).Create(&o).Error
-	}
-	return len(mockOrgs), nil
+	return 0, nil
 }
 
-// SyncPersons 同步人员档案
+// SyncPersons 同步人员档案（纯真实数据）
 func (s *HikService) SyncPersons() (int, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
+
 	cli, err := s.GetClient()
 	if err == nil && cli.AppKey != "" {
 		persons, err := cli.GetPersons()
 		if err == nil {
-			s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
 			count := 0
 			for _, dto := range persons {
 				item := hkmodel.HkPerson{
@@ -330,24 +296,14 @@ func (s *HikService) SyncPersons() (int, error) {
 			return count, nil
 		}
 	}
-	// 沙箱 Mock 数据
-	mockPersons := []hkmodel.HkPerson{
-		{PersonID: "P8001", PersonName: "张伟", JobNo: "HK8001", PhoneNo: "13800138001", OrgIndexCode: "O101", OrgName: "研发中心"},
-		{PersonID: "P8002", PersonName: "李娜", JobNo: "HK8002", PhoneNo: "13800138002", OrgIndexCode: "O101", OrgName: "研发中心"},
-		{PersonID: "P8003", PersonName: "王强", JobNo: "HK8003", PhoneNo: "13800138003", OrgIndexCode: "O102", OrgName: "运营管理部"},
-		{PersonID: "P8004", PersonName: "赵敏", JobNo: "HK8004", PhoneNo: "138004", OrgIndexCode: "O103", OrgName: "行政后勤部"},
-	}
-	for _, p := range mockPersons {
-		_ = s.db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "person_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"person_name", "job_no", "phone_no"}),
-		}).Create(&p).Error
-	}
-	return len(mockPersons), nil
+	return 0, nil
 }
 
-// SearchPerson 检索人员信息
+// SearchPerson 检索人员信息（纯真实数据）
 func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
+
 	var list []hkmodel.HkPerson
 	query := s.db.Model(&hkmodel.HkPerson{})
 	if keyword != "" {
@@ -359,16 +315,25 @@ func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
 		_, _ = s.SyncPersons()
 		s.db.Limit(50).Find(&list)
 	}
+	if list == nil {
+		list = []hkmodel.HkPerson{}
+	}
 	return list, err
 }
 
-// ListOrgs 查询组织列表
+// ListOrgs 查询组织列表（纯真实数据）
 func (s *HikService) ListOrgs() ([]hkmodel.HkOrg, error) {
+	// 清理历史 Mock 沙箱数据
+	s.db.Exec("DELETE FROM hk_org WHERE org_index_code LIKE 'O10%'")
+
 	var list []hkmodel.HkOrg
 	err := s.db.Order("id ASC").Find(&list).Error
 	if len(list) == 0 {
 		_, _ = s.SyncOrgs()
 		s.db.Order("id ASC").Find(&list)
+	}
+	if list == nil {
+		list = []hkmodel.HkOrg{}
 	}
 	return list, err
 }
