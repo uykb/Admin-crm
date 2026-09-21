@@ -102,7 +102,7 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 	}
 
 	headersStr, headerKeys := BuildSignedHeaders(signedMap)
-	signature := CalculateSignature(c.AppSecret, method, accept, contentType, headersStr, path)
+	signature := CalculateSignature(c.AppSecret, method, accept, contentType, headersStr, req.URL.RequestURI())
 
 	req.Header.Set("Accept", accept)
 	req.Header.Set("Content-Type", contentType)
