@@ -15,11 +15,12 @@ import (
 
 // Client 海康开放平台 API 客户端
 type Client struct {
-	BaseURL        string
-	AppKey         string
-	AppSecret      string
-	AppAccessToken string
-	HTTPClient     *http.Client
+	BaseURL         string
+	AppKey          string
+	AppSecret       string
+	AppAccessToken  string
+	UserAccessToken string
+	HTTPClient      *http.Client
 }
 
 // NewClient 创建海康客户端实例
@@ -40,6 +41,11 @@ func NewClient(baseURL, appKey, appSecret string) *Client {
 			Timeout:   15 * time.Second,
 		},
 	}
+}
+
+// SetUserAccessToken 设置用户 token
+func (c *Client) SetUserAccessToken(token string) {
+	c.UserAccessToken = strings.TrimSpace(token)
 }
 
 // DoRequest 发送签名与 Token 授权请求
@@ -105,6 +111,9 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 		req.Header.Set("token", c.AppAccessToken)
 		req.Header.Set("access_token", c.AppAccessToken)
 		req.Header.Set("Authorization", "Bearer "+c.AppAccessToken)
+	}
+	if c.UserAccessToken != "" {
+		req.Header.Set("User-Access-Token", c.UserAccessToken)
 	}
 	req.Header.Set("x-ca-key", c.AppKey)
 	req.Header.Set("x-ca-timestamp", timestamp)

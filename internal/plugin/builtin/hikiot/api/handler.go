@@ -36,25 +36,25 @@ func (h *HikHandler) GetConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(cfg))
 }
 
-// SaveConfig 保存海康开放平台配置
+// SaveConfig 保存插件配置
 func (h *HikHandler) SaveConfig(c *gin.Context) {
 	var req struct {
 		BaseURL   string `json:"base_url"`
-		AppKey    string `json:"app_key" binding:"required"`
-		AppSecret string `json:"app_secret" binding:"required"`
+		AppKey    string `json:"app_key"`
+		AppSecret string `json:"app_secret"`
+		UserToken string `json:"user_token"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, response.Error(400, "参数无效: "+err.Error()))
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
 		return
 	}
 
-	if err := h.svc.SaveConfig(req.BaseURL, req.AppKey, req.AppSecret); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, "保存海康配置失败: "+err.Error()))
+	err := h.svc.SaveConfig(req.BaseURL, req.AppKey, req.AppSecret, req.UserToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "保存配置失败: "+err.Error()))
 		return
 	}
-
-	c.JSON(http.StatusOK, response.Success("海康配置保存成功"))
+	c.JSON(http.StatusOK, response.Success("保存成功"))
 }
 
 // ListDoors 获取门禁设备列表

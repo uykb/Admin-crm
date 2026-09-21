@@ -22,30 +22,37 @@ func NewHikService(db *gorm.DB) *HikService {
 
 // GetClient 获取客户端实例
 func (s *HikService) GetClient() (*client.Client, error) {
-	var baseURL, appKey, appSecret string
+	var baseURL, appKey, appSecret, userToken string
 
-	var sBase, sKey, sSecret model.SysSetting
+	var sBase, sKey, sSecret, sUser model.SysSetting
 	s.db.Where("key = ?", "hikiot_base_url").First(&sBase)
 	s.db.Where("key = ?", "hikiot_app_key").First(&sKey)
 	s.db.Where("key = ?", "hikiot_app_secret").First(&sSecret)
+	s.db.Where("key = ?", "hikiot_user_token").First(&sUser)
 
 	baseURL = sBase.Value
 	appKey = sKey.Value
 	appSecret = sSecret.Value
+	userToken = sUser.Value
 
 	if baseURL == "" {
 		baseURL = "https://open-api.hikiot.com"
 	}
 
-	return client.NewClient(baseURL, appKey, appSecret), nil
+	c := client.NewClient(baseURL, appKey, appSecret)
+	if userToken != "" {
+		c.SetUserAccessToken(userToken)
+	}
+	return c, nil
 }
 
 // GetConfig 获取海康当前配置
 func (s *HikService) GetConfig() (map[string]string, error) {
-	var sBase, sKey, sSecret model.SysSetting
+	var sBase, sKey, sSecret, sUser model.SysSetting
 	s.db.Where("key = ?", "hikiot_base_url").First(&sBase)
 	s.db.Where("key = ?", "hikiot_app_key").First(&sKey)
 	s.db.Where("key = ?", "hikiot_app_secret").First(&sSecret)
+	s.db.Where("key = ?", "hikiot_user_token").First(&sUser)
 
 	baseURL := sBase.Value
 	if baseURL == "" {
@@ -56,15 +63,17 @@ func (s *HikService) GetConfig() (map[string]string, error) {
 		"base_url":   baseURL,
 		"app_key":    sKey.Value,
 		"app_secret": sSecret.Value,
+		"user_token": sUser.Value,
 	}, nil
 }
 
 // SaveConfig 保存海康配置
-func (s *HikService) SaveConfig(baseURL, appKey, appSecret string) error {
+func (s *HikService) SaveConfig(baseURL, appKey, appSecret, userToken string) error {
 	settings := []model.SysSetting{
 		{Key: "hikiot_base_url", Value: baseURL, IsPublic: false},
 		{Key: "hikiot_app_key", Value: appKey, IsPublic: false},
 		{Key: "hikiot_app_secret", Value: appSecret, IsPublic: false},
+		{Key: "hikiot_user_token", Value: userToken, IsPublic: false},
 	}
 	for _, item := range settings {
 		err := s.db.Clauses(clause.OnConflict{

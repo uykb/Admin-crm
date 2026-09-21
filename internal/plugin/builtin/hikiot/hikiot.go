@@ -206,10 +206,14 @@ func (p *HikPlugin) OnConfigUpdate(configJSON string) error {
 	if appSecret == "" {
 		appSecret = m["hikiot_app_secret"]
 	}
+	userToken := m["user_token"]
+	if userToken == "" {
+		userToken = m["hikiot_user_token"]
+	}
 
 	db := core.GetDB()
 	svc := hikservice.NewHikService(db)
-	return svc.SaveConfig(baseURL, appKey, appSecret)
+	return svc.SaveConfig(baseURL, appKey, appSecret, userToken)
 }
 
 func (p *HikPlugin) TestConnection() error {
