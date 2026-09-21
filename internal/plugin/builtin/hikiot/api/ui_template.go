@@ -108,13 +108,22 @@ const HikUIHTML = `<!DOCTYPE html>
             <el-button type="success" :loading="syncingPersons" @click="syncPersons">同步组织与人员数据</el-button>
           </div>
 
-          <el-table :data="persons" stripe v-loading="loadingPersons" style="width: 100%;">
-            <el-table-column prop="person_id" label="海康 PersonID" width="160"></el-table-column>
-            <el-table-column prop="person_name" label="姓名" width="120"></el-table-column>
-            <el-table-column prop="job_no" label="工号" width="120"></el-table-column>
-            <el-table-column prop="org_name" label="所属部门/组织"></el-table-column>
-            <el-table-column prop="phone_no" label="手机号码" width="150"></el-table-column>
+          <el-table :data="persons.slice((personPage - 1) * personPageSize, personPage * personPageSize)" stripe v-loading="loadingPersons" style="width: 100%;">
+            <el-table-column prop="person_id" label="海康 PersonID" width="180"></el-table-column>
+            <el-table-column prop="person_name" label="姓名" width="150"></el-table-column>
+            <el-table-column prop="job_no" label="工号" width="150"></el-table-column>
+            <el-table-column prop="phone_no" label="手机号码"></el-table-column>
           </el-table>
+
+          <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
+            <el-pagination
+              v-model:current-page="personPage"
+              v-model:page-size="personPageSize"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next, jumper"
+              :total="persons.length">
+            </el-pagination>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -138,6 +147,8 @@ const HikUIHTML = `<!DOCTYPE html>
         const loadingPersons = ref(false);
         const syncingPersons = ref(false);
         const personKeyword = ref('');
+        const personPage = ref(1);
+        const personPageSize = ref(20);
 
         const getAuthHeader = () => {
           const urlParams = new URLSearchParams(window.location.search);
@@ -235,7 +246,7 @@ const HikUIHTML = `<!DOCTYPE html>
         return {
           activeTab, doors, loadingDoors, syncingDoors, controlling,
           attendance, loadingAtt, attQuery, loadAttendance,
-          persons, loadingPersons, syncingPersons, personKeyword, loadPersons, syncPersons,
+          persons, loadingPersons, syncingPersons, personKeyword, personPage, personPageSize, loadPersons, syncPersons,
           loadDoors, controlDoor, handleTabChange
         };
       }
