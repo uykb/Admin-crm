@@ -188,27 +188,6 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           </div>
           <div class="code-preview" v-loading="loadingACL">{{ aclContent || '未加载 ACL 数据' }}</div>
         </el-tab-pane>
-
-        <!-- 标签页 4：Tailscale API 密钥配置 -->
-        <el-tab-pane label="Tailscale 密钥配置" name="config">
-          <el-form :model="configForm" label-width="140px" style="max-width: 600px; margin-top: 10px;">
-            <el-form-item label="Tailnet 名称">
-              <el-input v-model="configForm.tailnet" placeholder="如 example.com 或 your-email@gmail.com"></el-input>
-            </el-form-item>
-            <el-form-item label="Personal API Key">
-              <el-input v-model="configForm.api_key" type="password" show-password placeholder="tskey-api-xxxx (优先使用)"></el-input>
-            </el-form-item>
-            <el-form-item label="OAuth Client ID">
-              <el-input v-model="configForm.client_id" placeholder="填写 OAuth Client ID"></el-input>
-            </el-form-item>
-            <el-form-item label="OAuth Secret">
-              <el-input v-model="configForm.client_secret" type="password" show-password placeholder="填写 OAuth Client Secret"></el-input>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Tailscale 密钥配置</el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
       </el-tabs>
     </div>
   </div>
@@ -231,8 +210,7 @@ const TailscaleUIHTML = `<!DOCTYPE html>
         const aclContent = ref('');
         const loadingACL = ref(false);
 
-        const configForm = reactive({ tailnet: '', api_key: '', client_id: '', client_secret: '' });
-        const savingConfig = ref(false);
+        const configForm = reactive({ tailnet: '' });
 
         const onlineCount = computed(() => devices.value.filter(d => d.online).length);
 
@@ -336,25 +314,8 @@ const TailscaleUIHTML = `<!DOCTYPE html>
             const json = await res.json();
             if (json.code === 200 && json.data) {
               configForm.tailnet = json.data.tailnet || '';
-              configForm.api_key = json.data.api_key || '';
-              configForm.client_id = json.data.client_id || '';
-              configForm.client_secret = json.data.client_secret || '';
             }
           } catch(e) {}
-        };
-
-        const saveConfig = async () => {
-          savingConfig.value = true;
-          try {
-            const res = await fetch('/api/v1/tailscale/config', {
-              method: 'POST',
-              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-              body: JSON.stringify(configForm)
-            });
-            const json = await res.json();
-            if (json.code === 200) ElementPlus.ElMessage.success('Tailscale 密钥配置保存成功');
-          } catch(e) {}
-          savingConfig.value = false;
         };
 
         const parseIPs = (ipsStr) => {
@@ -377,7 +338,6 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           if (tabName === 'devices') loadDevices();
           if (tabName === 'keys') loadKeyLogs();
           if (tabName === 'acl') loadACL();
-          if (tabName === 'config') loadConfig();
         };
 
         onMounted(() => {
@@ -389,7 +349,7 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           activeTab, devices, loadingDevices, syncing, deviceSearch, onlineCount,
           keyForm, creatingKey, newlyCreatedKey, keyLogs, createAuthKey,
           aclContent, loadingACL, loadACL,
-          configForm, savingConfig, saveConfig,
+          configForm,
           loadDevices, syncDevices, deleteDevice, parseIPs, formatTime, copyText, handleTabChange
         };
       }

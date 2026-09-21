@@ -116,24 +116,6 @@ const HikUIHTML = `<!DOCTYPE html>
             <el-table-column prop="phone_no" label="手机号码" width="150"></el-table-column>
           </el-table>
         </el-tab-pane>
-
-        <!-- 标签页 4：海康开放平台 API 配置 -->
-        <el-tab-pane label="海康密钥配置" name="config">
-          <el-form :model="configForm" label-width="140px" style="max-width: 600px; margin-top: 10px;">
-            <el-form-item label="网关 API 地址">
-              <el-input v-model="configForm.base_url" placeholder="https://open.hikiot.com"></el-input>
-            </el-form-item>
-            <el-form-item label="海康 AppKey">
-              <el-input v-model="configForm.app_key" placeholder="填入海康开放平台分配的 AppKey"></el-input>
-            </el-form-item>
-            <el-form-item label="海康 AppSecret">
-              <el-input v-model="configForm.app_secret" type="password" show-password placeholder="填入海康开放平台分配的 AppSecret"></el-input>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存平台密钥设置</el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
       </el-tabs>
     </div>
   </div>
@@ -156,9 +138,6 @@ const HikUIHTML = `<!DOCTYPE html>
         const loadingPersons = ref(false);
         const syncingPersons = ref(false);
         const personKeyword = ref('');
-
-        const configForm = reactive({ base_url: 'https://open.hikiot.com', app_key: '', app_secret: '' });
-        const savingConfig = ref(false);
 
         const getAuthHeader = () => {
           const urlParams = new URLSearchParams(window.location.search);
@@ -243,37 +222,10 @@ const HikUIHTML = `<!DOCTYPE html>
           syncingPersons.value = false;
         };
 
-        const loadConfig = async () => {
-          try {
-            const res = await fetch('/api/v1/hikiot/config', { headers: getAuthHeader() });
-            const json = await res.json();
-            if (json.code === 200 && json.data) {
-              configForm.base_url = json.data.base_url || 'https://open.hikiot.com';
-              configForm.app_key = json.data.app_key || '';
-              configForm.app_secret = json.data.app_secret || '';
-            }
-          } catch(e) {}
-        };
-
-        const saveConfig = async () => {
-          savingConfig.value = true;
-          try {
-            const res = await fetch('/api/v1/hikiot/config', {
-              method: 'POST',
-              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-              body: JSON.stringify(configForm)
-            });
-            const json = await res.json();
-            if (json.code === 200) ElementPlus.ElMessage.success('海康开放平台密钥配置保存成功');
-          } catch(e) {}
-          savingConfig.value = false;
-        };
-
         const handleTabChange = (tabName) => {
           if (tabName === 'doors') loadDoors();
           if (tabName === 'attendance') loadAttendance();
           if (tabName === 'persons') loadPersons();
-          if (tabName === 'config') loadConfig();
         };
 
         onMounted(() => {
@@ -284,7 +236,7 @@ const HikUIHTML = `<!DOCTYPE html>
           activeTab, doors, loadingDoors, syncingDoors, controlling,
           attendance, loadingAtt, attQuery, loadAttendance,
           persons, loadingPersons, syncingPersons, personKeyword, loadPersons, syncPersons,
-          configForm, savingConfig, saveConfig, loadDoors, controlDoor, handleTabChange
+          loadDoors, controlDoor, handleTabChange
         };
       }
     });

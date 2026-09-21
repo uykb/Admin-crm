@@ -90,37 +90,6 @@ const KingdeeUIHTML = `<!DOCTYPE html>
             </el-table>
           </div>
         </el-tab-pane>
-
-        <!-- 标签页 2：金蝶账套配置 -->
-        <el-tab-pane label="金蝶账套 API 配置" name="config">
-          <el-form :model="configForm" label-width="160px" style="max-width: 650px; margin-top: 15px;">
-            <el-form-item label="金蝶服务地址" required>
-              <el-input v-model="configForm.server_url" placeholder="内网地址如 http://192.168.1.50:8000/k3cloud/"></el-input>
-            </el-form-item>
-            <el-form-item label="账套 ID (数据中心)" required>
-              <el-input v-model="configForm.db_id" placeholder="如 60d1xxxxxx 或 db2024"></el-input>
-            </el-form-item>
-            <el-form-item label="登录用户" required>
-              <el-input v-model="configForm.username" placeholder="金蝶集成专用账号或管理员"></el-input>
-            </el-form-item>
-            <el-form-item label="应用 ID (AppID)">
-              <el-input v-model="configForm.app_id" placeholder="Web API 注册分配的 AppID"></el-input>
-            </el-form-item>
-            <el-form-item label="应用密钥 (AppSecret)">
-              <el-input v-model="configForm.app_secret" type="password" show-password placeholder="应用 Secret（优先使用）"></el-input>
-            </el-form-item>
-            <el-form-item label="登录密码 (Password)">
-              <el-input v-model="configForm.password" type="password" show-password placeholder="未填 AppSecret 时使用账号密码"></el-input>
-            </el-form-item>
-            <el-form-item label="语言代码 (Lcid)">
-              <el-input-number v-model="configForm.lcid" :min="1000" :max="9999" placeholder="2052"></el-input-number>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
-              <el-button type="success" :loading="testingConfig" @click="testConfig">测试 API 连通性</el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
       </el-tabs>
     </div>
   </div>
@@ -146,14 +115,8 @@ const KingdeeUIHTML = `<!DOCTYPE html>
         const configForm = ref({
           server_url: '',
           db_id: '',
-          username: '',
-          app_id: '',
-          app_secret: '',
-          password: '',
-          lcid: 2052
+          username: ''
         });
-        const savingConfig = ref(false);
-        const testingConfig = ref(false);
 
         const getToken = () => {
           const urlParams = new URLSearchParams(window.location.search);
@@ -180,47 +143,6 @@ const KingdeeUIHTML = `<!DOCTYPE html>
             }
           } catch (e) {
             console.error('加载金蝶配置失败', e);
-          }
-        };
-
-        const saveConfig = async () => {
-          savingConfig.value = true;
-          try {
-            const res = await fetch('/api/v1/kingdee/config', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-              body: JSON.stringify(configForm.value)
-            });
-            const data = await res.json();
-            if (data.code === 200) {
-              ElMessage.success('金蝶云星空配置保存成功');
-            } else {
-              ElMessage.error(data.msg || '保存失败');
-            }
-          } catch (e) {
-            ElMessage.error('请求错误: ' + e.message);
-          } finally {
-            savingConfig.value = false;
-          }
-        };
-
-        const testConfig = async () => {
-          testingConfig.value = true;
-          try {
-            const res = await fetch('/api/v1/kingdee/test', {
-              method: 'POST',
-              headers: getAuthHeader()
-            });
-            const data = await res.json();
-            if (data.code === 200 && data.data.ok) {
-              ElMessage.success(data.data.message);
-            } else {
-              ElMessage.error((data.data && data.data.error) || data.msg || '测试连通失败');
-            }
-          } catch (e) {
-            ElMessage.error('网络请求失败: ' + e.message);
-          } finally {
-            testingConfig.value = false;
           }
         };
 
@@ -257,7 +179,7 @@ const KingdeeUIHTML = `<!DOCTYPE html>
         return {
           activeTab,
           queryForm, executingQuery, customResults, customResultCols, executeCustomQuery,
-          configForm, savingConfig, testingConfig, loadConfig, saveConfig, testConfig
+          configForm
         };
       }
     }).use(ElementPlus).mount('#app');

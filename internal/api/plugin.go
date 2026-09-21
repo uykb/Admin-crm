@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -77,6 +78,12 @@ func (h *PluginHandler) GetConfig(c *gin.Context) {
 		}
 	}
 
+	var raw json.RawMessage
+	if json.Unmarshal([]byte(configStr), &raw) == nil {
+		c.JSON(http.StatusOK, response.Success(gin.H{"config": raw}))
+		return
+	}
+
 	c.JSON(http.StatusOK, response.Success(gin.H{"config": configStr}))
 }
 
@@ -84,7 +91,7 @@ func (h *PluginHandler) GetConfig(c *gin.Context) {
 func (h *PluginHandler) UpdateConfig(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	var req struct {
-		Config string `json:"config"`
+		Config interface{} `json:"config"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
@@ -95,8 +102,17 @@ func (h *PluginHandler) UpdateConfig(c *gin.Context) {
 		c.JSON(http.StatusNotFound, response.Error(404, "插件不存在"))
 		return
 	}
-	cfg := req.Config
-	pluginRec.Config = &cfg
+
+	var cfgStr string
+	switch v := req.Config.(type) {
+	case string:
+		cfgStr = v
+	default:
+		b, _ := json.MarshalIndent(v, "", "  ")
+		cfgStr = string(b)
+	}
+
+	pluginRec.Config = &cfgStr
 	if err := dal.UpdatePlugin(pluginRec); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "更新失败"))
 		return
@@ -105,7 +121,7 @@ func (h *PluginHandler) UpdateConfig(c *gin.Context) {
 	// 同步调用插件 OnConfigUpdate Hook
 	if p := plugin.GetPluginByName(pluginRec.Name); p != nil {
 		if cp, ok := p.(plugin.ConfigurablePlugin); ok {
-			if err := cp.OnConfigUpdate(cfg); err != nil {
+			if err := cp.OnConfigUpdate(cfgStr); err != nil {
 				log.Printf("[Plugin:%s] OnConfigUpdate 失败: %v", p.Name(), err)
 			}
 		}
