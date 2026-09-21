@@ -152,15 +152,13 @@ func (s *HikService) SyncDoors() (int, error) {
 		if code == "" {
 			continue
 		}
-		chNo := dto.ChannelNo
-		if chNo == 0 && dto.DoorNo > 0 {
-			chNo = dto.DoorNo
-		}
+		chNo := dto.GetChannelNo()
+		status := dto.GetStatus()
 		item := hkmodel.HkDoor{
 			DoorIndexCode: code,
 			DoorName:      name,
 			ChannelNo:     chNo,
-			Status:        dto.Status,
+			Status:        status,
 		}
 		err := s.db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "door_index_code"}},
@@ -260,9 +258,14 @@ func (s *HikService) SyncOrgs() (int, error) {
 		if err == nil {
 			count := 0
 			for _, dto := range orgs {
+				code := dto.GetCode()
+				name := dto.GetName()
+				if code == "" {
+					continue
+				}
 				item := hkmodel.HkOrg{
-					OrgIndexCode:       dto.OrgIndexCode,
-					OrgName:            dto.OrgName,
+					OrgIndexCode:       code,
+					OrgName:            name,
 					ParentOrgIndexCode: dto.ParentOrgIndexCode,
 				}
 				_ = s.db.Clauses(clause.OnConflict{
@@ -288,11 +291,16 @@ func (s *HikService) SyncPersons() (int, error) {
 		if err == nil {
 			count := 0
 			for _, dto := range persons {
+				id := dto.GetID()
+				name := dto.GetName()
+				if id == "" {
+					continue
+				}
 				item := hkmodel.HkPerson{
-					PersonID:     dto.PersonID,
-					PersonName:   dto.PersonName,
+					PersonID:     id,
+					PersonName:   name,
 					JobNo:        dto.JobNo,
-					PhoneNo:      dto.PhoneNo,
+					PhoneNo:      dto.GetPhone(),
 					OrgIndexCode: dto.OrgIndexCode,
 					OrgName:      dto.OrgName,
 				}

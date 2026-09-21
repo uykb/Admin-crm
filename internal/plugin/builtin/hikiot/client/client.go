@@ -181,6 +181,10 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 func (c *Client) GetDoors() ([]DoorDTO, error) {
 	var resp BaseResponse
 	endpoints := []string{
+		"/device/v1/channel/page",
+		"/device/v1/channel/list",
+		"/resource/v1/channel/page",
+		"/resource/v1/channel/list",
 		"/device/direct/v1/doorControl/doorList",
 		"/api/v1/open/basic/channels/list",
 		"/device/v1/page",

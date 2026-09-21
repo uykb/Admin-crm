@@ -101,31 +101,52 @@ func (p *PersonDTO) GetPhone() string {
 	return p.Phone
 }
 
-// DoorDTO 海康门禁点结构
+// DoorDTO 海康门禁点结构（兼容设备通道/资源点所有变体字段）
 type DoorDTO struct {
-	DoorIndexCode string `json:"doorIndexCode"`
-	DoorName      string `json:"doorName"`
-	DeviceSerial  string `json:"deviceSerial"`
-	DeviceName    string `json:"deviceName"`
-	ChannelNo     int    `json:"channelNo"`
-	DoorNo        int    `json:"doorNo"`
-	Status        int    `json:"status"` // 0: 离线, 1: 在线
+	DoorIndexCode string      `json:"doorIndexCode"`
+	DoorName      string      `json:"doorName"`
+	DeviceSerial  string      `json:"deviceSerial"`
+	DeviceName    string      `json:"deviceName"`
+	ResourceName  string      `json:"resourceName"`
+	ChannelName   string      `json:"channelName"`
+	SerialNo      string      `json:"serialNo"`
+	Model         string      `json:"model"`
+	DeviceModel   string      `json:"deviceModel"`
+	ChannelNo     interface{} `json:"channelNo"`
+	DoorNo        interface{} `json:"doorNo"`
+	ResourceNo    interface{} `json:"resourceNo"`
+	Status        interface{} `json:"status"` // 0: 离线, 1: 在线
+	OnlineStatus  interface{} `json:"onlineStatus"`
+	IsOnline      interface{} `json:"isOnline"`
+	ResourceType  string      `json:"resourceType"`
+	Type          string      `json:"type"`
 }
 
 func (d *DoorDTO) GetCode() string {
 	if d.DoorIndexCode != "" {
 		return d.DoorIndexCode
 	}
-	if d.DeviceSerial != "" {
-		if d.DoorNo > 0 {
-			return fmt.Sprintf("%s_%d", d.DeviceSerial, d.DoorNo)
+	sn := d.DeviceSerial
+	if sn == "" {
+		sn = d.SerialNo
+	}
+	chNo := d.GetChannelNo()
+	if sn != "" {
+		if chNo > 0 {
+			return fmt.Sprintf("%s-%d", sn, chNo)
 		}
-		return d.DeviceSerial
+		return sn
 	}
 	return ""
 }
 
 func (d *DoorDTO) GetName() string {
+	if d.ResourceName != "" {
+		return d.ResourceName
+	}
+	if d.ChannelName != "" {
+		return d.ChannelName
+	}
 	if d.DoorName != "" {
 		return d.DoorName
 	}
@@ -133,6 +154,35 @@ func (d *DoorDTO) GetName() string {
 		return d.DeviceName
 	}
 	return "海康门禁点"
+}
+
+func (d *DoorDTO) GetChannelNo() int {
+	if v, ok := d.ChannelNo.(float64); ok {
+		return int(v)
+	}
+	if v, ok := d.DoorNo.(float64); ok {
+		return int(v)
+	}
+	if v, ok := d.ResourceNo.(float64); ok {
+		return int(v)
+	}
+	return 1
+}
+
+func (d *DoorDTO) GetStatus() int {
+	if v, ok := d.Status.(float64); ok {
+		return int(v)
+	}
+	if v, ok := d.OnlineStatus.(float64); ok {
+		return int(v)
+	}
+	if v, ok := d.IsOnline.(bool); ok {
+		if v {
+			return 1
+		}
+		return 0
+	}
+	return 1
 }
 
 // DoorControlParam 控门参数
