@@ -288,17 +288,22 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	var resp BaseResponse
 	
-	// 解析出真实的 deviceSerial (去掉 -1 这种通道后缀)
+	// 智能推断真实的 deviceSerial 和 resourceSerial
 	deviceSerial := doorIndexCode
+	resourceSerial := doorIndexCode
+	
 	if idx := strings.Index(doorIndexCode, "-"); idx > 0 {
 		deviceSerial = doorIndexCode[:idx]
+	} else {
+		// 没有后缀说明是旧款的纯设备序列号，门资源序列号通常需要加上 -1 后缀
+		resourceSerial = doorIndexCode + "-1"
 	}
 	
 	// 注意：新版云端接口为 GET 请求
 	params := map[string]interface{}{
-		"resourceSerial": doorIndexCode,
-		"deviceSerial":   deviceSerial, // 老款设备可能严格要求真实的设备序列号
-		"doorNo":         1,            // 老款设备通常默认 1 号门
+		"resourceSerial": resourceSerial, // 文档请求参数表格中的标准名称
+		"deviceSerial":   deviceSerial,   // 文档调用示例中的名称
+		"doorNo":         1,
 	}
 	
 	err := c.DoRequest("GET", "/issue/v1/device/openDoor", params, &resp)
