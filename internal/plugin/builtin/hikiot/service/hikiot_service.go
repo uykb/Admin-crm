@@ -323,9 +323,9 @@ func (s *HikService) SyncPersons() (int, error) {
 				item := hkmodel.HkPerson{
 					PersonID:     id,
 					PersonName:   name,
-					JobNo:        dto.JobNo,
+					JobNo:        dto.GetJobNo(),
 					PhoneNo:      dto.GetPhone(),
-					OrgIndexCode: dto.OrgIndexCode,
+					OrgIndexCode: dto.GetOrgCode(),
 					OrgName:      dto.OrgName,
 				}
 				_ = s.db.Clauses(clause.OnConflict{

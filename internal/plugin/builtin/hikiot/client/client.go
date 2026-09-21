@@ -209,37 +209,60 @@ func (c *Client) GetOrgs() ([]OrgDTO, error) {
 
 // GetPersons 查询人员档案（海康互联云端）
 func (c *Client) GetPersons() ([]PersonDTO, error) {
-	var resp BaseResponse
-	err := c.DoRequest("GET", "/team/v1/person/list", map[string]interface{}{
-		"pageNo":   1,
-		"pageSize": 500,
-	}, &resp)
-	if err != nil {
-		err = c.DoRequest("POST", "/team/v1/person/list", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		err = c.DoRequest("GET", "/artemis/api/resource/v2/person/personList", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		err = c.DoRequest("POST", "/artemis/api/resource/v2/person/personList", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		return nil, err
+	endpoints := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/team/v1/person/getPersons"},
+		{"GET", "/team/v1/person/page"},
+		{"POST", "/team/v1/person/page"},
+		{"GET", "/team/v1/person/list"},
+		{"POST", "/team/v1/person/list"},
 	}
 
-	b, _ := json.Marshal(resp.Data)
-	var list []PersonDTO
-	_ = json.Unmarshal(b, &list)
-	return list, nil
+	var resp BaseResponse
+	var lastErr error
+
+	for _, ep := range endpoints {
+		params := map[string]interface{}{
+			"page":     1,
+			"size":     100,
+			"pageNo":   1,
+			"pageSize": 100,
+		}
+		err := c.DoRequest(ep.method, ep.path, params, &resp)
+		if err == nil {
+			b, _ := json.Marshal(resp.Data)
+			var wrapper struct {
+				PersonVOs []PersonDTO `json:"personVOs"`
+				List      []PersonDTO `json:"list"`
+				Rows      []PersonDTO `json:"rows"`
+			}
+			if json.Unmarshal(b, &wrapper) == nil {
+				if len(wrapper.PersonVOs) > 0 {
+					return wrapper.PersonVOs, nil
+				}
+				if len(wrapper.List) > 0 {
+					return wrapper.List, nil
+				}
+				if len(wrapper.Rows) > 0 {
+					return wrapper.Rows, nil
+				}
+			}
+
+			var list []PersonDTO
+			if json.Unmarshal(b, &list) == nil && len(list) > 0 {
+				return list, nil
+			}
+		} else {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return []PersonDTO{}, nil
 }
 
 // GetDoors 查询门禁设备列表（海康互联云端）
