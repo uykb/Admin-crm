@@ -153,6 +153,17 @@ func (h *HikHandler) DebugHikiot(c *gin.Context) {
 	c.String(http.StatusOK, client.DebugEndpoints())
 }
 
+// SaveConfigDirectly 用于快速无验证保存 userToken
+func (h *HikHandler) SaveConfigDirectly(c *gin.Context, userToken string) {
+	cfg, _ := h.svc.GetConfig()
+	err := h.svc.SaveConfig(cfg["base_url"], cfg["app_key"], cfg["app_secret"], userToken)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to save: "+err.Error())
+		return
+	}
+	c.String(http.StatusOK, "Save success! userToken has been updated to: "+userToken+". You can now go to frontend and click Sync Doors!")
+}
+
 // SetupRoutes 挂载路由规则
 func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 	api := group.Group("/hikiot")

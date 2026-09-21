@@ -13,6 +13,7 @@ import (
 	hikmodel "apeadmin-gin/internal/plugin/builtin/hikiot/model"
 	hikservice "apeadmin-gin/internal/plugin/builtin/hikiot/service"
 
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -152,6 +153,16 @@ func (p *HikPlugin) Register(pr *plugin.PluginRouter) error {
 	if pr.Public != nil {
 		handler := hikapi.NewHikHandler(pr.DB)
 		pr.Public.GET("/hikiot/debug", handler.DebugHikiot)
+		
+		// 临时用于通过 GET 请求保存配置
+		pr.Public.GET("/hikiot/save-token", func(c *gin.Context) {
+			userToken := c.Query("ut")
+			if userToken != "" {
+				handler.SaveConfigDirectly(c, userToken)
+			} else {
+				c.String(400, "Missing ut parameter")
+			}
+		})
 	}
 
 	// 3. 注册 AI Agent MCP 工具
