@@ -211,9 +211,9 @@ func (c *Client) GetOrgs() ([]OrgDTO, error) {
 func (c *Client) GetPersons() ([]PersonDTO, error) {
 	orgs, _ := c.GetOrgs()
 
-	departNos := []string{""} // 包含根组织（不传 departNo）
+	departNos := []string{"BM54141022"} // 保证包含指定部门
 	for _, o := range orgs {
-		if code := o.GetCode(); code != "" {
+		if code := o.GetCode(); code != "" && code != "BM54141022" {
 			departNos = append(departNos, code)
 		}
 	}
@@ -221,70 +221,59 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 	allPersonsMap := make(map[string]PersonDTO)
 	var lastErr error
 
-	endpoints := []string{
-		"/team/v1/person/getPersons",
-		"/team/v1/person/page",
-		"/team/v1/person/list",
-	}
-
 	for _, dNo := range departNos {
-		for _, ep := range endpoints {
-			params := map[string]interface{}{
-				"page":     1,
-				"size":     100,
-				"pageNo":   1,
-				"pageSize": 100,
+		if dNo == "" {
+			continue
+		}
+		params := map[string]interface{}{
+			"page":          1,
+			"size":          100,
+			"departNo":      dNo,
+			"hasLeafDepart": true,
+		}
+
+		var resp BaseResponse
+		err := c.DoRequest("GET", "/team/v1/person/page", params, &resp)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		b, _ := json.Marshal(resp.Data)
+		var wrapper struct {
+			TeamPersonVOs []PersonDTO `json:"teamPersonVOs"`
+			PersonVOs     []PersonDTO `json:"personVOs"`
+			List          []PersonDTO `json:"list"`
+			Rows          []PersonDTO `json:"rows"`
+			Data          []PersonDTO `json:"data"`
+		}
+		var list []PersonDTO
+
+		if json.Unmarshal(b, &wrapper) == nil {
+			if len(wrapper.TeamPersonVOs) > 0 {
+				list = wrapper.TeamPersonVOs
+			} else if len(wrapper.PersonVOs) > 0 {
+				list = wrapper.PersonVOs
+			} else if len(wrapper.List) > 0 {
+				list = wrapper.List
+			} else if len(wrapper.Rows) > 0 {
+				list = wrapper.Rows
+			} else if len(wrapper.Data) > 0 {
+				list = wrapper.Data
 			}
-			if dNo != "" {
-				params["departNo"] = dNo
-			}
+		}
 
-			var resp BaseResponse
-			err := c.DoRequest("GET", ep, params, &resp)
-			if err != nil {
-				err = c.DoRequest("POST", ep, params, &resp)
-			}
+		if len(list) == 0 {
+			_ = json.Unmarshal(b, &list)
+		}
 
-			if err == nil {
-				b, _ := json.Marshal(resp.Data)
-				var wrapper struct {
-					TeamPersonVOs []PersonDTO `json:"teamPersonVOs"`
-					PersonVOs     []PersonDTO `json:"personVOs"`
-					List          []PersonDTO `json:"list"`
-					Rows          []PersonDTO `json:"rows"`
-					Data          []PersonDTO `json:"data"`
+		for _, p := range list {
+			id := p.GetID()
+			if id != "" {
+				if p.DepartNo == "" {
+					p.DepartNo = dNo
 				}
-				var list []PersonDTO
-
-				if json.Unmarshal(b, &wrapper) == nil {
-					if len(wrapper.TeamPersonVOs) > 0 {
-						list = wrapper.TeamPersonVOs
-					} else if len(wrapper.PersonVOs) > 0 {
-						list = wrapper.PersonVOs
-					} else if len(wrapper.List) > 0 {
-						list = wrapper.List
-					} else if len(wrapper.Rows) > 0 {
-						list = wrapper.Rows
-					} else if len(wrapper.Data) > 0 {
-						list = wrapper.Data
-					}
-				}
-
-				if len(list) == 0 {
-					_ = json.Unmarshal(b, &list)
-				}
-
-				for _, p := range list {
-					id := p.GetID()
-					if id != "" {
-						if dNo != "" && p.DepartNo == "" {
-							p.DepartNo = dNo
-						}
-						allPersonsMap[id] = p
-					}
-				}
-			} else {
-				lastErr = err
+				allPersonsMap[id] = p
 			}
 		}
 	}
