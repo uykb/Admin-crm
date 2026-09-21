@@ -277,35 +277,37 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 
 // DebugEndpoints 测试各个端点并返回详细结果（供诊断使用）
 func (c *Client) DebugEndpoints() string {
-	endpoints := []string{
-		"/device/v1/channel/page",
-		"/api/v1/open/basic/channels/list",
-		"/device/v1/list",
-		"/device/direct/v1/doorControl/doorList",
-		"/resource/v1/channel/page",
-		"/api/v1/estate/devices/list",
-		"/device/v1/channel/list",
-		"/artemis/api/resource/v1/door/doorList",
+	endpoints := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/device/acs/v1/doorList"},
+		{"GET", "/device/v1/page"},
+		{"GET", "/team/v1/depart/list"},
+		{"GET", "/team/v1/person/list"},
+		{"GET", "/attendance/v1/event/page"},
 	}
-	
+
 	var sb strings.Builder
-	sb.WriteString("=== Debug Doors Endpoints ===\n")
-	
+	sb.WriteString("=== Debug Endpoints ===\n")
+
 	for _, ep := range endpoints {
+		sb.WriteString(fmt.Sprintf("Endpoint: [%s] %s\n", ep.method, ep.path))
 		var rawResp map[string]interface{}
-		err := c.DoRequest("POST", ep, map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-			"page":     1,
-			"size":     500,
-		}, &rawResp)
 		
-		sb.WriteString(fmt.Sprintf("Endpoint: %s\n", ep))
+		var params map[string]interface{}
+		if ep.path == "/device/v1/page" {
+			params = map[string]interface{}{"page": 1, "size": 100}
+		} else {
+			params = map[string]interface{}{"pageNo": 1, "pageSize": 100}
+		}
+
+		err := c.DoRequest(ep.method, ep.path, params, &rawResp)
 		if err != nil {
 			sb.WriteString(fmt.Sprintf("Error: %v\n", err))
 		} else {
-			b, _ := json.Marshal(rawResp)
-			sb.WriteString(fmt.Sprintf("Response: %s\n", string(b)))
+			b, _ := json.MarshalIndent(rawResp, "", "  ")
+			sb.WriteString(fmt.Sprintf("Success! Raw Response:\n%s\n", string(b)))
 		}
 		sb.WriteString("------------------------\n")
 	}
