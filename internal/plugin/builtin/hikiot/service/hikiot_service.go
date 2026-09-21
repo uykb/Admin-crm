@@ -142,15 +142,24 @@ func (s *HikService) SyncDoors() (int, error) {
 	}
 
 	if len(doors) == 0 {
-		return 0, nil
+		return 0, fmt.Errorf("海康 API 连通正常，但未返回门禁点。请确认：1. 海康互联账号下已添加/关联门禁设备；2. 应用已开通门禁相关 API 权限")
 	}
 
 	count := 0
 	for _, dto := range doors {
+		code := dto.GetCode()
+		name := dto.GetName()
+		if code == "" {
+			continue
+		}
+		chNo := dto.ChannelNo
+		if chNo == 0 && dto.DoorNo > 0 {
+			chNo = dto.DoorNo
+		}
 		item := hkmodel.HkDoor{
-			DoorIndexCode: dto.DoorIndexCode,
-			DoorName:      dto.DoorName,
-			ChannelNo:     dto.ChannelNo,
+			DoorIndexCode: code,
+			DoorName:      name,
+			ChannelNo:     chNo,
 			Status:        dto.Status,
 		}
 		err := s.db.Clauses(clause.OnConflict{

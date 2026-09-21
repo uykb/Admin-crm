@@ -180,29 +180,72 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 // GetDoors 查询门禁设备列表（海康互联云端）
 func (c *Client) GetDoors() ([]DoorDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/device/direct/v1/doorControl/doorList", map[string]interface{}{
-		"pageNo":   1,
-		"pageSize": 500,
-	}, &resp)
-	if err != nil {
-		err = c.DoRequest("POST", "/device/v1/page", map[string]interface{}{
+	endpoints := []string{
+		"/device/direct/v1/doorControl/doorList",
+		"/api/v1/open/basic/channels/list",
+		"/device/v1/page",
+		"/device/v1/list",
+		"/device/v1/deviceList",
+		"/artemis/api/resource/v1/door/doorList",
+	}
+
+	var lastErr error
+	for _, ep := range endpoints {
+		var r BaseResponse
+		err := c.DoRequest("POST", ep, map[string]interface{}{
 			"pageNo":   1,
 			"pageSize": 500,
-		}, &resp)
+		}, &r)
+		if err == nil && r.Data != nil {
+			resp = r
+			break
+		}
+		if err != nil {
+			lastErr = err
+		}
 	}
-	if err != nil {
-		err = c.DoRequest("POST", "/artemis/api/resource/v1/door/doorList", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		return nil, err
+
+	if resp.Data == nil {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, fmt.Errorf("海康 API 未能返回有效设备数据")
 	}
 
 	b, _ := json.Marshal(resp.Data)
+
+	// 1. 尝试直接 unmarshal 为 []DoorDTO
 	var list []DoorDTO
-	_ = json.Unmarshal(b, &list)
+	if json.Unmarshal(b, &list) == nil && len(list) > 0 {
+		return list, nil
+	}
+
+	// 2. 尝试 unmarshal 为包含 list/rows/channels 的分页结构
+	var objResp struct {
+		List       []DoorDTO `json:"list"`
+		Rows       []DoorDTO `json:"rows"`
+		Channels   []DoorDTO `json:"channels"`
+		DeviceList []DoorDTO `json:"deviceList"`
+		Data       []DoorDTO `json:"data"`
+	}
+	if json.Unmarshal(b, &objResp) == nil {
+		if len(objResp.List) > 0 {
+			return objResp.List, nil
+		}
+		if len(objResp.Rows) > 0 {
+			return objResp.Rows, nil
+		}
+		if len(objResp.Channels) > 0 {
+			return objResp.Channels, nil
+		}
+		if len(objResp.DeviceList) > 0 {
+			return objResp.DeviceList, nil
+		}
+		if len(objResp.Data) > 0 {
+			return objResp.Data, nil
+		}
+	}
+
 	return list, nil
 }
 

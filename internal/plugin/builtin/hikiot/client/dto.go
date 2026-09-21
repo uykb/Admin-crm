@@ -49,6 +49,23 @@ type OrgDTO struct {
 	OrgIndexCode       string `json:"orgIndexCode"`
 	OrgName            string `json:"orgName"`
 	ParentOrgIndexCode string `json:"parentOrgIndexCode"`
+	DeptID             string `json:"deptId"`
+	DeptName           string `json:"deptName"`
+	ParentID           string `json:"parentId"`
+}
+
+func (o *OrgDTO) GetCode() string {
+	if o.OrgIndexCode != "" {
+		return o.OrgIndexCode
+	}
+	return o.DeptID
+}
+
+func (o *OrgDTO) GetName() string {
+	if o.OrgName != "" {
+		return o.OrgName
+	}
+	return o.DeptName
 }
 
 // PersonDTO 海康人员数据结构
@@ -59,14 +76,63 @@ type PersonDTO struct {
 	PhoneNo      string `json:"phoneNo"`
 	OrgIndexCode string `json:"orgIndexCode"`
 	OrgName      string `json:"orgName"`
+	Name         string `json:"name"`
+	Phone        string `json:"phone"`
+}
+
+func (p *PersonDTO) GetID() string {
+	if p.PersonID != "" {
+		return p.PersonID
+	}
+	return p.JobNo
+}
+
+func (p *PersonDTO) GetName() string {
+	if p.PersonName != "" {
+		return p.PersonName
+	}
+	return p.Name
+}
+
+func (p *PersonDTO) GetPhone() string {
+	if p.PhoneNo != "" {
+		return p.PhoneNo
+	}
+	return p.Phone
 }
 
 // DoorDTO 海康门禁点结构
 type DoorDTO struct {
 	DoorIndexCode string `json:"doorIndexCode"`
 	DoorName      string `json:"doorName"`
+	DeviceSerial  string `json:"deviceSerial"`
+	DeviceName    string `json:"deviceName"`
 	ChannelNo     int    `json:"channelNo"`
+	DoorNo        int    `json:"doorNo"`
 	Status        int    `json:"status"` // 0: 离线, 1: 在线
+}
+
+func (d *DoorDTO) GetCode() string {
+	if d.DoorIndexCode != "" {
+		return d.DoorIndexCode
+	}
+	if d.DeviceSerial != "" {
+		if d.DoorNo > 0 {
+			return fmt.Sprintf("%s_%d", d.DeviceSerial, d.DoorNo)
+		}
+		return d.DeviceSerial
+	}
+	return ""
+}
+
+func (d *DoorDTO) GetName() string {
+	if d.DoorName != "" {
+		return d.DoorName
+	}
+	if d.DeviceName != "" {
+		return d.DeviceName
+	}
+	return "海康门禁点"
 }
 
 // DoorControlParam 控门参数
