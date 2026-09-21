@@ -209,60 +209,95 @@ func (c *Client) GetOrgs() ([]OrgDTO, error) {
 
 // GetPersons 查询人员档案（海康互联云端）
 func (c *Client) GetPersons() ([]PersonDTO, error) {
-	endpoints := []struct {
-		method string
-		path   string
-	}{
-		{"GET", "/team/v1/person/getPersons"},
-		{"GET", "/team/v1/person/page"},
-		{"POST", "/team/v1/person/page"},
-		{"GET", "/team/v1/person/list"},
-		{"POST", "/team/v1/person/list"},
+	orgs, _ := c.GetOrgs()
+
+	departNos := []string{""} // 包含根组织（不传 departNo）
+	for _, o := range orgs {
+		if code := o.GetCode(); code != "" {
+			departNos = append(departNos, code)
+		}
 	}
 
-	var resp BaseResponse
+	allPersonsMap := make(map[string]PersonDTO)
 	var lastErr error
 
-	for _, ep := range endpoints {
-		params := map[string]interface{}{
-			"page":     1,
-			"size":     100,
-			"pageNo":   1,
-			"pageSize": 100,
-		}
-		err := c.DoRequest(ep.method, ep.path, params, &resp)
-		if err == nil {
-			b, _ := json.Marshal(resp.Data)
-			var wrapper struct {
-				PersonVOs []PersonDTO `json:"personVOs"`
-				List      []PersonDTO `json:"list"`
-				Rows      []PersonDTO `json:"rows"`
+	endpoints := []string{
+		"/team/v1/person/getPersons",
+		"/team/v1/person/page",
+		"/team/v1/person/list",
+	}
+
+	for _, dNo := range departNos {
+		for _, ep := range endpoints {
+			params := map[string]interface{}{
+				"page":     1,
+				"size":     100,
+				"pageNo":   1,
+				"pageSize": 100,
 			}
-			if json.Unmarshal(b, &wrapper) == nil {
-				if len(wrapper.PersonVOs) > 0 {
-					return wrapper.PersonVOs, nil
-				}
-				if len(wrapper.List) > 0 {
-					return wrapper.List, nil
-				}
-				if len(wrapper.Rows) > 0 {
-					return wrapper.Rows, nil
-				}
+			if dNo != "" {
+				params["departNo"] = dNo
 			}
 
-			var list []PersonDTO
-			if json.Unmarshal(b, &list) == nil && len(list) > 0 {
-				return list, nil
+			var resp BaseResponse
+			err := c.DoRequest("GET", ep, params, &resp)
+			if err != nil {
+				err = c.DoRequest("POST", ep, params, &resp)
 			}
-		} else {
-			lastErr = err
+
+			if err == nil {
+				b, _ := json.Marshal(resp.Data)
+				var wrapper struct {
+					TeamPersonVOs []PersonDTO `json:"teamPersonVOs"`
+					PersonVOs     []PersonDTO `json:"personVOs"`
+					List          []PersonDTO `json:"list"`
+					Rows          []PersonDTO `json:"rows"`
+					Data          []PersonDTO `json:"data"`
+				}
+				var list []PersonDTO
+
+				if json.Unmarshal(b, &wrapper) == nil {
+					if len(wrapper.TeamPersonVOs) > 0 {
+						list = wrapper.TeamPersonVOs
+					} else if len(wrapper.PersonVOs) > 0 {
+						list = wrapper.PersonVOs
+					} else if len(wrapper.List) > 0 {
+						list = wrapper.List
+					} else if len(wrapper.Rows) > 0 {
+						list = wrapper.Rows
+					} else if len(wrapper.Data) > 0 {
+						list = wrapper.Data
+					}
+				}
+
+				if len(list) == 0 {
+					_ = json.Unmarshal(b, &list)
+				}
+
+				for _, p := range list {
+					id := p.GetID()
+					if id != "" {
+						if dNo != "" && p.DepartNo == "" {
+							p.DepartNo = dNo
+						}
+						allPersonsMap[id] = p
+					}
+				}
+			} else {
+				lastErr = err
+			}
 		}
 	}
 
-	if lastErr != nil {
+	result := make([]PersonDTO, 0, len(allPersonsMap))
+	for _, p := range allPersonsMap {
+		result = append(result, p)
+	}
+
+	if len(result) == 0 && lastErr != nil {
 		return nil, lastErr
 	}
-	return []PersonDTO{}, nil
+	return result, nil
 }
 
 // GetDoors 查询门禁设备列表（海康互联云端）
