@@ -24,8 +24,8 @@ type Client struct {
 // NewClient 创建海康客户端实例
 func NewClient(baseURL, appKey, appSecret string) *Client {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if baseURL == "" {
-		baseURL = "https://open.hikiot.com"
+	if baseURL == "" || baseURL == "https://open.hikiot.com" || baseURL == "http://open.hikiot.com" {
+		baseURL = "https://open-api.hikiot.com"
 	}
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -199,4 +199,32 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 	var list []AttendanceRecordDTO
 	_ = json.Unmarshal(b, &list)
 	return list, nil
+}
+
+// ExchangeAppToken 海康互联云端获取 App Token 测试鉴权
+func (c *Client) ExchangeAppToken() error {
+	var resp struct {
+		Code string      `json:"code"`
+		Msg  string      `json:"msg"`
+		Data interface{} `json:"data"`
+	}
+
+	payload := map[string]interface{}{
+		"appKey":    c.AppKey,
+		"appSecret": c.AppSecret,
+	}
+
+	err := c.DoRequest("POST", "/auth/exchangeAppToken", payload, &resp)
+	if err != nil {
+		errV1 := c.DoRequest("POST", "/v1/auth/exchangeAppToken", payload, &resp)
+		if errV1 != nil {
+			return err
+		}
+	}
+
+	if resp.Code != "0" && resp.Code != "200" && resp.Code != "" {
+		return fmt.Errorf("海康云端 API 认证响应 [%s]: %s", resp.Code, resp.Msg)
+	}
+
+	return nil
 }

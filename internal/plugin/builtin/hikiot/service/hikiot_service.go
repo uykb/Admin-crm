@@ -108,17 +108,26 @@ func (s *HikService) TestConnection() error {
 		return fmt.Errorf("未配置海康 AppKey 或 AppSecret，请先配置凭据")
 	}
 
-	// 优先调用门禁列表测试鉴权
-	doors, err := cli.GetDoors()
-	if err != nil {
-		// 备用尝试调用组织列表测试
-		_, errOrg := cli.GetOrgs()
-		if errOrg != nil {
-			return fmt.Errorf("海康 API 鉴权测试失败: %w", err)
-		}
+	// 1. 优先尝试海康互联云端 API 认证 (https://open-api.hikiot.com)
+	errCloud := cli.ExchangeAppToken()
+	if errCloud == nil {
+		return nil
 	}
-	_ = doors
-	return nil
+
+	// 2. 备用尝试海康 Artemis 私有网关门禁列表
+	doors, errArtemis := cli.GetDoors()
+	if errArtemis == nil {
+		_ = doors
+		return nil
+	}
+
+	// 3. 备用尝试 Artemis 组织列表
+	_, errOrg := cli.GetOrgs()
+	if errOrg == nil {
+		return nil
+	}
+
+	return fmt.Errorf("海康 API 连通性测试未通过。\n【海康互联云 API (open-api.hikiot.com)】: %v;\n【海康 Artemis 私有网关】: %v", errCloud, errArtemis)
 }
 
 // SyncDoors 同步门禁设备列表
