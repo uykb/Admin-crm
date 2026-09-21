@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -10,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"apeadmin-gin/internal/core"
 	"apeadmin-gin/internal/pkg/response"
+	"github.com/gin-gonic/gin"
 )
 
 // 构建信息（可用 ldflags 注入：-X 'apeadmin-gin/internal/api.buildVersion=xxx'）
@@ -106,5 +108,37 @@ func (h *SystemHandler) Update(c *gin.Context) {
 		"size":      file.Size,
 		"saved_as":  filepath.Base(dst),
 		"restart_required": true,
+	}))
+}
+
+// GetServerIP 查询后端服务器公网出口 IP（GET /api/v1/system/ip 或 GET /api/v1/ip）
+func (h *SystemHandler) GetServerIP(c *gin.Context) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	var egressIP string
+
+	resp, err := client.Get("https://api.ipify.org?format=json")
+	if err == nil {
+		defer resp.Body.Close()
+		var res struct {
+			IP string `json:"ip"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&res) == nil {
+			egressIP = res.IP
+		}
+	}
+	if egressIP == "" {
+		resp2, err2 := client.Get("https://icanhazip.com")
+		if err2 == nil {
+			defer resp2.Body.Close()
+			b, _ := io.ReadAll(resp2.Body)
+			egressIP = strings.TrimSpace(string(b))
+		}
+	}
+
+	c.JSON(http.StatusOK, response.Success(gin.H{
+		"egress_ip": egressIP,
+		"client_ip": c.ClientIP(),
+		"host":      c.Request.Host,
+		"note":      "如果第三方平台（如海康开放平台/金蝶云星空）要求配置服务器出口 IP 白名单，请将 egress_ip 填入对方控制台白名单中。",
 	}))
 }
