@@ -288,18 +288,26 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	var resp BaseResponse
 	
+	// 解析出真实的 deviceSerial (去掉 -1 这种通道后缀)
+	deviceSerial := doorIndexCode
+	if idx := strings.Index(doorIndexCode, "-"); idx > 0 {
+		deviceSerial = doorIndexCode[:idx]
+	}
+	
 	// 注意：新版云端接口为 GET 请求
 	params := map[string]interface{}{
 		"resourceSerial": doorIndexCode,
-		"deviceSerial":   doorIndexCode, // 兼容文档表格和调用示例的不一致
+		"deviceSerial":   deviceSerial, // 老款设备可能严格要求真实的设备序列号
+		"doorNo":         1,            // 老款设备通常默认 1 号门
 	}
 	
 	err := c.DoRequest("GET", "/issue/v1/device/openDoor", params, &resp)
 	if err != nil {
 		// 降级尝试旧版 POST 接口
-		errV1 := c.DoRequest("POST", "/device/direct/v1/doorControl/doorList", map[string]interface{}{
-			"doorIndexCodes": []string{doorIndexCode},
-			"command":        command,
+		errV1 := c.DoRequest("POST", "/device/direct/v1/doorControl/remoteControlDoor", map[string]interface{}{
+			"deviceSerial": deviceSerial,
+			"doorNo":       1,
+			"cmd":          command,
 		}, &resp)
 		if errV1 != nil {
 			return err
