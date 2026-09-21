@@ -97,6 +97,9 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusMethodNotAllowed {
+			return fmt.Errorf("海康 API 返回 HTTP 405 Method Not Allowed。主要原因：\n1. `base_url` 填写了 `http://` 触发了服务器重定向(301/302)到 `https://`，导致 POST 请求降级为 GET 请求。建议将 `base_url` 协议明确修改为 `https://`；\n2. `base_url` 端口或路径不正确（海康 Artemis 网关私有部署默认端口通常为 8443，如 `https://192.168.10.x:8443`）；\n3. 填写的 URL 域名/IP 指向了 Web 前端界面而非 Artemis API 开放网关端口。")
+		}
 		return fmt.Errorf("海康 API 返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
 	}
 
