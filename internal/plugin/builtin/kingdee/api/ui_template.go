@@ -5,7 +5,7 @@ const KingdeeUIHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>金蝶云星空 ERP 业务控制台</title>
+  <title>K3 Cloud</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.css" />
   <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.full.min.js"></script>
@@ -16,10 +16,10 @@ const KingdeeUIHTML = `<!DOCTYPE html>
     .header h2 { margin: 0; font-size: 20px; color: #1f2937; display: flex; align-items: center; gap: 10px; }
     .card-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); }
     .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
-    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 20px; }
     .stat-card { background: #fff; padding: 16px 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
     .stat-title { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
-    .stat-value { font-size: 22px; font-weight: 700; color: #111827; }
+    .stat-value { font-size: 18px; font-weight: 700; color: #111827; }
   </style>
 </head>
 <body>
@@ -27,102 +27,41 @@ const KingdeeUIHTML = `<!DOCTYPE html>
     <div class="header">
       <h2>
         <el-icon color="#409EFF"><box /></el-icon>
-        金蝶云星空 ERP 业务对接控制台 (K3 Cloud)
+        K3 Cloud
       </h2>
-      <el-tag type="primary" effect="dark" round>Tailscale 内网子网直连中</el-tag>
+      <el-tag type="primary" effect="dark" round>Tailscale 内网通道已就绪</el-tag>
     </div>
 
     <!-- 指标卡片 -->
     <div class="stat-row">
       <div class="stat-card">
         <div>
-          <div class="stat-title">物料/商品查询数</div>
-          <div class="stat-value" style="color: #409EFF;">{{ materials.length }}</div>
-        </div>
-        <el-icon size="32" color="#409EFF"><goods /></el-icon>
-      </div>
-      <div class="stat-card">
-        <div>
-          <div class="stat-title">客户总数</div>
-          <div class="stat-value" style="color: #67C23A;">{{ customers.length }}</div>
-        </div>
-        <el-icon size="32" color="#67C23A"><user /></el-icon>
-      </div>
-      <div class="stat-card">
-        <div>
-          <div class="stat-title">销售订单加载数</div>
-          <div class="stat-value" style="color: #E6A23C;">{{ salesOrders.length }}</div>
-        </div>
-        <el-icon size="32" color="#E6A23C"><document /></el-icon>
-      </div>
-      <div class="stat-card">
-        <div>
           <div class="stat-title">金蝶服务器</div>
           <div class="stat-value" style="font-size: 14px; word-break: break-all;">{{ configForm.server_url || '未配置' }}</div>
         </div>
-        <el-icon size="32" color="#909399"><connection /></el-icon>
+        <el-icon size="32" color="#409EFF"><connection /></el-icon>
+      </div>
+      <div class="stat-card">
+        <div>
+          <div class="stat-title">数据中心 (账套 ID)</div>
+          <div class="stat-value" style="font-size: 15px; color: #67C23A;">{{ configForm.db_id || '未配置' }}</div>
+        </div>
+        <el-icon size="32" color="#67C23A"><data-analysis /></el-icon>
+      </div>
+      <div class="stat-card">
+        <div>
+          <div class="stat-title">集成登录账号</div>
+          <div class="stat-value" style="font-size: 15px; color: #E6A23C;">{{ configForm.username || '未配置' }}</div>
+        </div>
+        <el-icon size="32" color="#E6A23C"><user /></el-icon>
       </div>
     </div>
 
     <div class="card-box">
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-        <!-- 标签页 1：物料/商品查询 -->
-        <el-tab-pane label="物料/商品列表 (BD_MATERIAL)" name="materials">
-          <div class="filter-bar">
-            <el-input v-model="materialSearch" placeholder="搜索物料编码/名称/规格" style="width: 280px;" clearable @keyup.enter="loadMaterials"></el-input>
-            <el-button type="primary" :loading="loadingMaterials" @click="loadMaterials">
-              <el-icon><search /></el-icon> 查询物料
-            </el-button>
-          </div>
-          <el-table :data="materials" v-loading="loadingMaterials" stripe border style="width: 100%;">
-            <el-table-column prop="id" label="物料内码 (ID)" width="120"></el-table-column>
-            <el-table-column prop="number" label="物料编码" width="180"></el-table-column>
-            <el-table-column prop="name" label="物料名称" min-width="200"></el-table-column>
-            <el-table-column prop="specification" label="规格型号" min-width="200"></el-table-column>
-          </el-table>
-        </el-tab-pane>
-
-        <!-- 标签页 2：客户列表 -->
-        <el-tab-pane label="客户列表 (BD_Customer)" name="customers">
-          <div class="filter-bar">
-            <el-input v-model="customerSearch" placeholder="搜索客户编码/名称" style="width: 280px;" clearable @keyup.enter="loadCustomers"></el-input>
-            <el-button type="success" :loading="loadingCustomers" @click="loadCustomers">
-              <el-icon><search /></el-icon> 查询客户
-            </el-button>
-          </div>
-          <el-table :data="customers" v-loading="loadingCustomers" stripe border style="width: 100%;">
-            <el-table-column prop="id" label="客户 ID" width="120"></el-table-column>
-            <el-table-column prop="number" label="客户编码" width="180"></el-table-column>
-            <el-table-column prop="name" label="客户名称" min-width="240"></el-table-column>
-          </el-table>
-        </el-tab-pane>
-
-        <!-- 标签页 3：销售订单 -->
-        <el-tab-pane label="销售订单 (SAL_SALEORDER)" name="salesOrders">
-          <div class="filter-bar">
-            <el-input v-model="orderSearch" placeholder="搜索订单号/客户名称" style="width: 280px;" clearable @keyup.enter="loadSalesOrders"></el-input>
-            <el-button type="warning" :loading="loadingOrders" @click="loadSalesOrders">
-              <el-icon><search /></el-icon> 查询销售订单
-            </el-button>
-          </div>
-          <el-table :data="salesOrders" v-loading="loadingOrders" stripe border style="width: 100%;">
-            <el-table-column prop="id" label="订单 ID" width="100"></el-table-column>
-            <el-table-column prop="bill_no" label="单据编号" width="200"></el-table-column>
-            <el-table-column prop="date" label="订货日期" width="160"></el-table-column>
-            <el-table-column prop="customer_name" label="客户名称" min-width="200"></el-table-column>
-            <el-table-column prop="document_status" label="审核状态" width="120">
-              <template #default="scope">
-                <el-tag :type="scope.row.document_status === 'C' ? 'success' : 'info'">
-                  {{ scope.row.document_status === 'C' ? '已审核' : scope.row.document_status || '暂存' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-
-        <!-- 标签页 4：自定义单据 SQL 条件查询 -->
+      <el-tabs v-model="activeTab">
+        <!-- 标签页 1：通用单据 SQL 条件查询 -->
         <el-tab-pane label="通用单据查询 (ExecuteBillQuery)" name="customQuery">
-          <el-form :model="queryForm" label-width="120px" style="max-width: 800px; margin-top: 10px;">
+          <el-form :model="queryForm" label-width="140px" style="max-width: 800px; margin-top: 10px;">
             <el-form-item label="单据 FormId" required>
               <el-input v-model="queryForm.form_id" placeholder="如 BD_MATERIAL, SAL_SALEORDER, AR_RECEIVEBILL"></el-input>
             </el-form-item>
@@ -152,7 +91,7 @@ const KingdeeUIHTML = `<!DOCTYPE html>
           </div>
         </el-tab-pane>
 
-        <!-- 标签页 5：金蝶账套配置 -->
+        <!-- 标签页 2：金蝶账套配置 -->
         <el-tab-pane label="金蝶账套 API 配置" name="config">
           <el-form :model="configForm" label-width="160px" style="max-width: 650px; margin-top: 15px;">
             <el-form-item label="金蝶服务地址" required>
@@ -178,7 +117,7 @@ const KingdeeUIHTML = `<!DOCTYPE html>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
-              <el-button type="success" :loading="testingConfig" @click="testConfig">测试内网 API 连通性</el-button>
+              <el-button type="success" :loading="testingConfig" @click="testConfig">测试 API 连通性</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -192,19 +131,7 @@ const KingdeeUIHTML = `<!DOCTYPE html>
 
     createApp({
       setup() {
-        const activeTab = ref('materials');
-
-        const materialSearch = ref('');
-        const loadingMaterials = ref(false);
-        const materials = ref([]);
-
-        const customerSearch = ref('');
-        const loadingCustomers = ref(false);
-        const customers = ref([]);
-
-        const orderSearch = ref('');
-        const loadingOrders = ref(false);
-        const salesOrders = ref([]);
+        const activeTab = ref('customQuery');
 
         const queryForm = ref({
           form_id: 'BD_MATERIAL',
@@ -297,60 +224,6 @@ const KingdeeUIHTML = `<!DOCTYPE html>
           }
         };
 
-        const loadMaterials = async () => {
-          loadingMaterials.value = true;
-          try {
-            const url = '/api/v1/kingdee/materials?keyword=' + encodeURIComponent(materialSearch.value);
-            const res = await fetch(url, { headers: getAuthHeader() });
-            const data = await res.json();
-            if (data.code === 200) {
-              materials.value = data.data || [];
-            } else {
-              ElMessage.error(data.msg || '查询物料失败');
-            }
-          } catch (e) {
-            ElMessage.error('查询报错: ' + e.message);
-          } finally {
-            loadingMaterials.value = false;
-          }
-        };
-
-        const loadCustomers = async () => {
-          loadingCustomers.value = true;
-          try {
-            const url = '/api/v1/kingdee/customers?keyword=' + encodeURIComponent(customerSearch.value);
-            const res = await fetch(url, { headers: getAuthHeader() });
-            const data = await res.json();
-            if (data.code === 200) {
-              customers.value = data.data || [];
-            } else {
-              ElMessage.error(data.msg || '查询客户失败');
-            }
-          } catch (e) {
-            ElMessage.error('查询报错: ' + e.message);
-          } finally {
-            loadingCustomers.value = false;
-          }
-        };
-
-        const loadSalesOrders = async () => {
-          loadingOrders.value = true;
-          try {
-            const url = '/api/v1/kingdee/sales-orders?keyword=' + encodeURIComponent(orderSearch.value);
-            const res = await fetch(url, { headers: getAuthHeader() });
-            const data = await res.json();
-            if (data.code === 200) {
-              salesOrders.value = data.data || [];
-            } else {
-              ElMessage.error(data.msg || '查询销售订单失败');
-            }
-          } catch (e) {
-            ElMessage.error('查询报错: ' + e.message);
-          } finally {
-            loadingOrders.value = false;
-          }
-        };
-
         const executeCustomQuery = async () => {
           executingQuery.value = true;
           customResults.value = [];
@@ -377,25 +250,14 @@ const KingdeeUIHTML = `<!DOCTYPE html>
           }
         };
 
-        const handleTabChange = (tabName) => {
-          if (tabName === 'materials' && materials.value.length === 0) loadMaterials();
-          if (tabName === 'customers' && customers.value.length === 0) loadCustomers();
-          if (tabName === 'salesOrders' && salesOrders.value.length === 0) loadSalesOrders();
-        };
-
         onMounted(() => {
           loadConfig();
-          loadMaterials();
         });
 
         return {
           activeTab,
-          materialSearch, loadingMaterials, materials, loadMaterials,
-          customerSearch, loadingCustomers, customers, loadCustomers,
-          orderSearch, loadingOrders, salesOrders, loadSalesOrders,
           queryForm, executingQuery, customResults, customResultCols, executeCustomQuery,
-          configForm, savingConfig, testingConfig, loadConfig, saveConfig, testConfig,
-          handleTabChange
+          configForm, savingConfig, testingConfig, loadConfig, saveConfig, testConfig
         };
       }
     }).use(ElementPlus).mount('#app');
