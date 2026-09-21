@@ -15,10 +15,11 @@ import (
 
 // Client 海康开放平台 API 客户端
 type Client struct {
-	BaseURL   string
-	AppKey    string
-	AppSecret string
-	HTTPClient *http.Client
+	BaseURL        string
+	AppKey         string
+	AppSecret      string
+	AppAccessToken string
+	HTTPClient     *http.Client
 }
 
 // NewClient 创建海康客户端实例
@@ -41,10 +42,15 @@ func NewClient(baseURL, appKey, appSecret string) *Client {
 	}
 }
 
-// DoRequest 发送签名请求
+// DoRequest 发送签名与 Token 授权请求
 func (c *Client) DoRequest(method, path string, bodyData interface{}, result interface{}) error {
 	if c.AppKey == "" || c.AppSecret == "" {
 		return fmt.Errorf("海康互联未设置 AppKey 或 AppSecret，请先在插件设置中配置凭据")
+	}
+
+	// 自动换取 AppAccessToken（非 exchangeAppToken 接口）
+	if c.AppAccessToken == "" && !strings.Contains(path, "exchangeAppToken") {
+		_, _ = c.ExchangeAppToken()
 	}
 
 	url := c.BaseURL + path
@@ -79,6 +85,10 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 
 	req.Header.Set("Accept", accept)
 	req.Header.Set("Content-Type", contentType)
+	if c.AppAccessToken != "" {
+		req.Header.Set("App-Access-Token", c.AppAccessToken)
+		req.Header.Set("token", c.AppAccessToken)
+	}
 	req.Header.Set("x-ca-key", c.AppKey)
 	req.Header.Set("x-ca-timestamp", timestamp)
 	req.Header.Set("x-ca-nonce", nonce)
@@ -98,7 +108,7 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusMethodNotAllowed {
-			return fmt.Errorf("海康 API 返回 HTTP 405 Method Not Allowed。主要原因：\n1. `base_url` 填写了 `http://` 触发了服务器重定向(301/302)到 `https://`，导致 POST 请求降级为 GET 请求。建议将 `base_url` 协议明确修改为 `https://`；\n2. `base_url` 端口或路径不正确（海康 Artemis 网关私有部署默认端口通常为 8443，如 `https://192.168.10.x:8443`）；\n3. 填写的 URL 域名/IP 指向了 Web 前端界面而非 Artemis API 开放网关端口。")
+			return fmt.Errorf("海康 API 返回 HTTP 405 Method Not Allowed。请确认 `base_url` 为 `https://open-api.hikiot.com`")
 		}
 		return fmt.Errorf("海康 API 返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
 	}
@@ -121,31 +131,42 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 	return nil
 }
 
-// GetOrgs 查询组织节点
+// GetOrgs 查询组织节点（海康互联云端）
 func (c *Client) GetOrgs() ([]OrgDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/artemis/api/resource/v1/org/orgList", map[string]interface{}{
+	err := c.DoRequest("POST", "/team/v1/depart/list", map[string]interface{}{
 		"pageNo":   1,
 		"pageSize": 500,
 	}, &resp)
 	if err != nil {
+		err = c.DoRequest("POST", "/artemis/api/resource/v1/org/orgList", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
+	if err != nil {
 		return nil, err
 	}
 
-	// 转换为 OrgDTO 切片
 	b, _ := json.Marshal(resp.Data)
 	var list []OrgDTO
 	_ = json.Unmarshal(b, &list)
 	return list, nil
 }
 
-// GetPersons 查询人员档案
+// GetPersons 查询人员档案（海康互联云端）
 func (c *Client) GetPersons() ([]PersonDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/artemis/api/resource/v2/person/personList", map[string]interface{}{
+	err := c.DoRequest("POST", "/team/v1/person/list", map[string]interface{}{
 		"pageNo":   1,
 		"pageSize": 500,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/artemis/api/resource/v2/person/personList", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -156,13 +177,25 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 	return list, nil
 }
 
-// GetDoors 查询门禁设备列表
+// GetDoors 查询门禁设备列表（海康互联云端）
 func (c *Client) GetDoors() ([]DoorDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/artemis/api/resource/v1/door/doorList", map[string]interface{}{
+	err := c.DoRequest("POST", "/device/direct/v1/doorControl/doorList", map[string]interface{}{
 		"pageNo":   1,
 		"pageSize": 500,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/device/v1/page", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
+	if err != nil {
+		err = c.DoRequest("POST", "/artemis/api/resource/v1/door/doorList", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -173,25 +206,40 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 	return list, nil
 }
 
-// ControlDoor 远程控门指令
+// ControlDoor 远程控门指令（海康互联云端）
 func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/artemis/api/acs/v1/door/control", map[string]interface{}{
-		"doorIndexCodes": []string{doorIndexCode},
-		"controlType":    command,
+	err := c.DoRequest("POST", "/device/direct/v1/doorControl/remoteControlDoor", map[string]interface{}{
+		"deviceSerial": doorIndexCode,
+		"doorNo":       1,
+		"cmd":          command,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/artemis/api/acs/v1/door/control", map[string]interface{}{
+			"doorIndexCodes": []string{doorIndexCode},
+			"controlType":    command,
+		}, &resp)
+	}
 	return err
 }
 
-// GetAttendanceRecords 查询考勤刷卡记录
+// GetAttendanceRecords 查询考勤刷卡记录（海康互联云端）
 func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRecordDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/artemis/api/acs/v2/door/events", map[string]interface{}{
+	err := c.DoRequest("POST", "/attendance/v1/event/page", map[string]interface{}{
 		"startTime": startTime,
 		"endTime":   endTime,
 		"pageNo":    1,
 		"pageSize":  1000,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/artemis/api/acs/v2/door/events", map[string]interface{}{
+			"startTime": startTime,
+			"endTime":   endTime,
+			"pageNo":    1,
+			"pageSize":  1000,
+		}, &resp)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +250,7 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 	return list, nil
 }
 
-// ExchangeAppToken 海康互联云端获取 App Token 测试鉴权
+// ExchangeAppToken 海康互联云端获取 App Token
 func (c *Client) ExchangeAppToken() (*AppTokenData, error) {
 	var resp struct {
 		Code FlexibleCode `json:"code"`
@@ -226,6 +274,10 @@ func (c *Client) ExchangeAppToken() (*AppTokenData, error) {
 	cStr := resp.Code.String()
 	if cStr != "0" && cStr != "200" && cStr != "" {
 		return nil, fmt.Errorf("海康云端 API 认证响应 [%s]: %s", cStr, resp.Msg)
+	}
+
+	if resp.Data.AppAccessToken != "" {
+		c.AppAccessToken = resp.Data.AppAccessToken
 	}
 
 	return &resp.Data, nil

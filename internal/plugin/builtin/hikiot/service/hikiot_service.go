@@ -78,12 +78,32 @@ func (s *HikService) SaveConfig(baseURL, appKey, appSecret string) error {
 	return nil
 }
 
-// ListDoors 获取门禁设备点列表（数据库或 Mock 沙箱）
+// ListDoors 获取门禁设备点列表
 func (s *HikService) ListDoors() ([]hkmodel.HkDoor, error) {
 	var list []hkmodel.HkDoor
 	s.db.Order("id ASC").Find(&list)
+
+	// 检查是否包含沙箱 Mock 门禁，或者数据库为空
+	hasMock := false
+	for _, d := range list {
+		if d.DoorIndexCode == "D1001" || d.DoorIndexCode == "D1002" {
+			hasMock = true
+			break
+		}
+	}
+
+	// 如果有真实凭据且（数据库为空或包含 Mock），自动触发真实 API 同步
+	cli, errCli := s.GetClient()
+	if (len(list) == 0 || hasMock) && errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
+		_, errSync := s.SyncDoors()
+		if errSync == nil {
+			var realList []hkmodel.HkDoor
+			s.db.Order("id ASC").Find(&realList)
+			return realList, nil
+		}
+	}
+
 	if len(list) == 0 {
-		// 沙箱 Mock 默认数据
 		mockDoors := []hkmodel.HkDoor{
 			{DoorIndexCode: "D1001", DoorName: "一楼办公区主大门", ChannelNo: 1, Status: 1},
 			{DoorIndexCode: "D1002", DoorName: "二楼研发中心西门", ChannelNo: 2, Status: 1},
@@ -135,12 +155,12 @@ func (s *HikService) SyncDoors() (int, error) {
 		return 0, fmt.Errorf("海康 API 门禁同步失败: %w", err)
 	}
 
-	if len(doors) == 0 {
-		return 0, fmt.Errorf("海康 API 返回 0 个门禁点，请确认海康平台已关联门禁资源与操作权限")
-	}
-
-	// 真实数据获取成功，删除沙箱 Mock 门禁数据
+	// 真实 API 请求成功，清除 Mock 沙箱门禁数据
 	s.db.Exec("DELETE FROM hk_door WHERE door_index_code LIKE 'D100%'")
+
+	if len(doors) == 0 {
+		return 0, nil
+	}
 
 	count := 0
 	for _, dto := range doors {
@@ -167,7 +187,6 @@ func (s *HikService) ControlDoor(doorIndexCode string, command int) error {
 	if err == nil && cli.AppKey != "" {
 		_ = cli.ControlDoor(doorIndexCode, command)
 	}
-	// 沙箱防空保护
 	var door hkmodel.HkDoor
 	if err := s.db.Where("door_index_code = ?", doorIndexCode).First(&door).Error; err == nil {
 		door.UpdatedAt = time.Now()
@@ -176,7 +195,7 @@ func (s *HikService) ControlDoor(doorIndexCode string, command int) error {
 	return nil
 }
 
-// QueryAttendance 查询落库考勤记录（含沙箱初始化）
+// QueryAttendance 查询落库考勤记录
 func (s *HikService) QueryAttendance(personName string, startDate, endDate string) ([]hkmodel.HkAttendance, error) {
 	var list []hkmodel.HkAttendance
 	query := s.db.Model(&hkmodel.HkAttendance{})
@@ -198,6 +217,38 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 	}
 
 	err := query.Order("clock_time DESC").Limit(200).Find(&list).Error
+
+	// 尝试自动同步真实考勤记录
+	cli, errCli := s.GetClient()
+	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
+		sTime := startDate
+		eTime := endDate
+		if sTime == "" {
+			sTime = time.Now().AddDate(0, 0, -7).Format("2006-01-02 00:00:00")
+		}
+		if eTime == "" {
+			eTime = time.Now().Format("2006-01-02 23:59:59")
+		}
+		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
+		if errRec == nil && len(records) > 0 {
+			s.db.Exec("DELETE FROM hk_attendance WHERE person_id LIKE 'P800%'")
+			for _, r := range records {
+				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
+				item := hkmodel.HkAttendance{
+					PersonID:   r.PersonID,
+					PersonName: r.PersonName,
+					JobNo:      r.JobNo,
+					ClockTime:  t,
+					DoorName:   r.DoorName,
+					VerifyMode: r.VerifyMode,
+				}
+				s.db.Create(&item)
+			}
+			query.Order("clock_time DESC").Limit(200).Find(&list)
+			return list, nil
+		}
+	}
+
 	if len(list) == 0 && personName == "" && startDate == "" {
 		now := time.Now()
 		mockAtt := []hkmodel.HkAttendance{
@@ -219,7 +270,8 @@ func (s *HikService) SyncOrgs() (int, error) {
 	cli, err := s.GetClient()
 	if err == nil && cli.AppKey != "" {
 		orgs, err := cli.GetOrgs()
-		if err == nil && len(orgs) > 0 {
+		if err == nil {
+			s.db.Exec("DELETE FROM hk_org WHERE org_index_code LIKE 'O10%'")
 			count := 0
 			for _, dto := range orgs {
 				item := hkmodel.HkOrg{
@@ -257,7 +309,8 @@ func (s *HikService) SyncPersons() (int, error) {
 	cli, err := s.GetClient()
 	if err == nil && cli.AppKey != "" {
 		persons, err := cli.GetPersons()
-		if err == nil && len(persons) > 0 {
+		if err == nil {
+			s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
 			count := 0
 			for _, dto := range persons {
 				item := hkmodel.HkPerson{
@@ -282,7 +335,7 @@ func (s *HikService) SyncPersons() (int, error) {
 		{PersonID: "P8001", PersonName: "张伟", JobNo: "HK8001", PhoneNo: "13800138001", OrgIndexCode: "O101", OrgName: "研发中心"},
 		{PersonID: "P8002", PersonName: "李娜", JobNo: "HK8002", PhoneNo: "13800138002", OrgIndexCode: "O101", OrgName: "研发中心"},
 		{PersonID: "P8003", PersonName: "王强", JobNo: "HK8003", PhoneNo: "13800138003", OrgIndexCode: "O102", OrgName: "运营管理部"},
-		{PersonID: "P8004", PersonName: "赵敏", JobNo: "HK8004", PhoneNo: "13800138004", OrgIndexCode: "O103", OrgName: "行政后勤部"},
+		{PersonID: "P8004", PersonName: "赵敏", JobNo: "HK8004", PhoneNo: "138004", OrgIndexCode: "O103", OrgName: "行政后勤部"},
 	}
 	for _, p := range mockPersons {
 		_ = s.db.Clauses(clause.OnConflict{
