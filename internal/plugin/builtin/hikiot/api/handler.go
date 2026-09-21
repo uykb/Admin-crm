@@ -143,6 +143,16 @@ func (h *HikHandler) SyncPersons(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(gin.H{"synced_count": count}))
 }
 
+// DebugHikiot 一键输出诊断结果（供浏览器直接访问）
+func (h *HikHandler) DebugHikiot(c *gin.Context) {
+	client, err := h.svc.GetClient()
+	if err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.String(http.StatusOK, client.DebugEndpoints())
+}
+
 // SetupRoutes 挂载路由规则
 func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 	api := group.Group("/hikiot")

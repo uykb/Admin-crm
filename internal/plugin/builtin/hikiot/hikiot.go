@@ -149,6 +149,10 @@ func (p *HikPlugin) Register(pr *plugin.PluginRouter) error {
 		handler := hikapi.NewHikHandler(pr.DB)
 		hikapi.SetupRoutes(pr.Authed, handler)
 	}
+	if pr.Public != nil {
+		handler := hikapi.NewHikHandler(pr.DB)
+		pr.Public.GET("/hikiot/debug", handler.DebugHikiot)
+	}
 
 	// 3. 注册 AI Agent MCP 工具
 	if pr.MCP != nil {
