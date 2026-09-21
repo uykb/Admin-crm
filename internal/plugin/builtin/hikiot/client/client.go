@@ -220,61 +220,80 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 
 	allPersonsMap := make(map[string]PersonDTO)
 	var lastErr error
+	pageSize := 50 // 遵循文档：每页数量最大值50
 
 	for _, dNo := range departNos {
 		if dNo == "" {
 			continue
 		}
-		params := map[string]interface{}{
-			"page":          1,
-			"size":          100,
-			"departNo":      dNo,
-			"hasLeafDepart": true,
-		}
 
-		var resp BaseResponse
-		err := c.DoRequest("GET", "/team/v1/person/page", params, &resp)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		b, _ := json.Marshal(resp.Data)
-		var wrapper struct {
-			TeamPersonVOs []PersonDTO `json:"teamPersonVOs"`
-			PersonVOs     []PersonDTO `json:"personVOs"`
-			List          []PersonDTO `json:"list"`
-			Rows          []PersonDTO `json:"rows"`
-			Data          []PersonDTO `json:"data"`
-		}
-		var list []PersonDTO
-
-		if json.Unmarshal(b, &wrapper) == nil {
-			if len(wrapper.TeamPersonVOs) > 0 {
-				list = wrapper.TeamPersonVOs
-			} else if len(wrapper.PersonVOs) > 0 {
-				list = wrapper.PersonVOs
-			} else if len(wrapper.List) > 0 {
-				list = wrapper.List
-			} else if len(wrapper.Rows) > 0 {
-				list = wrapper.Rows
-			} else if len(wrapper.Data) > 0 {
-				list = wrapper.Data
+		page := 1
+		for {
+			params := map[string]interface{}{
+				"page":          page,
+				"size":          pageSize,
+				"departNo":      dNo,
+				"hasLeafDepart": true,
 			}
-		}
 
-		if len(list) == 0 {
-			_ = json.Unmarshal(b, &list)
-		}
+			var resp BaseResponse
+			err := c.DoRequest("GET", "/team/v1/person/page", params, &resp)
+			if err != nil {
+				lastErr = err
+				break
+			}
 
-		for _, p := range list {
-			id := p.GetID()
-			if id != "" {
-				if p.DepartNo == "" {
-					p.DepartNo = dNo
+			b, _ := json.Marshal(resp.Data)
+			var wrapper struct {
+				TeamPersonVOs []PersonDTO `json:"teamPersonVOs"`
+				PersonVOs     []PersonDTO `json:"personVOs"`
+				List          []PersonDTO `json:"list"`
+				Rows          []PersonDTO `json:"rows"`
+				Data          []PersonDTO `json:"data"`
+			}
+			var list []PersonDTO
+
+			if json.Unmarshal(b, &wrapper) == nil {
+				if len(wrapper.TeamPersonVOs) > 0 {
+					list = wrapper.TeamPersonVOs
+				} else if len(wrapper.PersonVOs) > 0 {
+					list = wrapper.PersonVOs
+				} else if len(wrapper.List) > 0 {
+					list = wrapper.List
+				} else if len(wrapper.Rows) > 0 {
+					list = wrapper.Rows
+				} else if len(wrapper.Data) > 0 {
+					list = wrapper.Data
 				}
-				allPersonsMap[id] = p
 			}
+
+			if len(list) == 0 {
+				_ = json.Unmarshal(b, &list)
+			}
+
+			if len(list) == 0 {
+				break
+			}
+
+			newFound := 0
+			for _, p := range list {
+				id := p.GetID()
+				if id != "" {
+					if p.DepartNo == "" {
+						p.DepartNo = dNo
+					}
+					if _, exists := allPersonsMap[id]; !exists {
+						newFound++
+					}
+					allPersonsMap[id] = p
+				}
+			}
+
+			if len(list) < pageSize || newFound == 0 {
+				break
+			}
+
+			page++
 		}
 	}
 
