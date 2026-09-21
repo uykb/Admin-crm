@@ -120,8 +120,7 @@ func (s *HikService) TestConnection() error {
 		return fmt.Errorf("海康互联云 API 认证异常: 未能取得有效 appAccessToken")
 	}
 
-	debugInfo := cli.DebugEndpoints()
-	return fmt.Errorf("【诊断模式开启】请将以下信息发给 AI：\n\n%s", debugInfo)
+	return nil
 }
 
 // SyncDoors 同步门禁设备列表（纯真实数据）

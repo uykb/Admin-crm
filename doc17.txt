@@ -1,0 +1,951 @@
+开发文档
+更新日志
+工具
+控制台
+登录
+首页开发指南服务端APISDK & 插件客户案例
+API 调用指南
+身份及授权
+事件订阅
+视频
+智能
+门禁/梯控
+考勤
+团队通讯录
+审批
+访客
+报警
+硬件设备
+线索
+空间管理
+HikIot开放平台Android SDK使用说明
+简介
+本文档用于说明HikIot开放平台SDK Android版本接口之间的关系以及接口调用顺序，对开放平台SDK Android版本各接口都有详细的说明。
+如集成本SDK及插件服务，建议您提前告知您的用户涉及以下隐私协议政策：
+海康互联开放平台应用开发SDK隐私政策
+名词解释
+名词	注解
+appKey	登录接口返回
+httpUrlToken	非设备操作的token，通过getHttpToken获取，初始化sdk时传入
+streamLiveToken	预览需设置的token
+streamRecToken	回放需设置的token
+streamTalkToken	对讲时需设置的token
+deviceToken	设备类请求token
+deviceGlobalToken	通道类请求token，通道相关底层请求需用到
+deviceVideoToken	通道类请求token，通道相关底层请求需用到
+DeviceSerial	设备序列号
+CameraNo、ChannelNo	设备通道号
+OSD	视频播放当前时间
+PTZ	云台控制，可以通过终端控制操作设备
+功能介绍
+功能	说明
+账号对接(授权登录、sdk接口登录)	授权到HikIot平台，复用HikIot平台能力
+摄像头列表	得到对应账号下设备
+直播	登录接口直播，可设置直播分辨率
+查看回放（SD卡、录像机、云存储）	回放
+设备对讲	对讲（包含半双工对讲和全双工对讲）
+隐私声明
+1、收集个人信息说明
+功能模块	收集个人信息类型	使用目的
+设备对讲	物联网硬件设备信息：设备序列号、设备验证码	为最终用户提供物联网硬件设备的语音对讲功能
+麦克风采集声音
+设备预览、回放	物联网硬件设备信息：设备序列号、设备验证码	为最终用户提供物联网硬件设备的视频预览、回放功能
+客户端终端设备信息：客户端类型、客户端版本号、设备型号、设备硬件特征码、操作系统版本号
+网络信息：当前网络状态、网络连接方式
+
+请注意：基于不同的设备、系统及系统版本，以及开发者在集成、使用我们产品与/或服务时所决定的权限，我们实际接收到的信息可能会有所不同
+
+2、权限说明
+功能模块	权限名称	使用目的
+基本功能	INTERNET 访问网络连接	用于网络连接
+READ_PHONE_STATE 获取手机状态	用于获取手机状态
+ACCESS_NETWORK_STATE 获取网络状态信息	用于获取网络状态信息
+ACCESS_WIFI_STATE 获取WiFi状态信息	用于获取WiFi状态信息息
+CHANGE_NETWORK_STATE 修改网络状态信息	当设备连接网络发生变化时，更改网络状态
+CHANGE_WIFI_STATE 修改WiFi状态信息	当设备连接网络发生变化时，更改网络状态
+CHANGE_WIFI_MULTICAST_STATE 接收WLAN多播信息	当设备连接网络发生变化时，更改网络状态
+设备配网	ACCESS_FINE_LOCATION 访问精准定位	用户获取本地网络信息以完成设备配网
+CAMERA 相机	用于扫描二维码以添加物联网硬件设备
+设备对讲	RECORD_AUDIO 录音	用于设备语音对讲功能，采集音频
+MODIFY_AUDIO_SETTINGS 更改音频设置	用于设备语音对讲功能，更改音频设置
+视频通话	CAMERA 相机	用于视频通话功能，采集视频
+RECORD_AUDIO 录音	用于视频通话功能，采集音频
+BLUETOOTH 蓝牙	用于视频通话功能，蓝牙耳机连接
+工程配置
+
+环境准备
+支持 Android Studio 1.4 以上 支持 JDK 7.0 以上版本
+支持 Android 手机系统 5.0 以上版本
+
+创建应用
+
+首先，你需要在 海康开放平台官网 的控制台创建应用，并获取到对应的 appAccessToken。可在 海康互联开放平台 - 工具 处获取到 appAccessToken。如下图所示：
+
+获取到 appAccessToken 后，Demo 需要使用到该 token 和对应的账号、密码进行授权登录，登录成功后，即可获取到账号下的设备列表，而且，后续接口调用也需要登录接口返回的 userAccessToken 进行鉴权。
+
+安装 SDK
+
+SDK 的安装方式
+
+使用 aar 依赖
+
+先 下载hikiotsdk.aar到工程中libs目录下
+
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    /*SDK核心模块，依赖 AAR */
+    implementation files('libs/hikiotsdk.aar')
+    // 需要自行依赖okhttp和gson库、retrofit、ktx、rx库 必须依赖
+    implementation 'androidx.core:core-ktx:1.6.0'
+    implementation 'com.google.code.gson:gson:2.8.5'
+    implementation 'com.squareup.okhttp3:okhttp:3.12.1'
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation "com.squareup.retrofit2:converter-gson:2.9.0"
+    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.9.0'
+    implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
+    
+
+ }
+
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+
+配置工程
+配置 Android 权限
+
+在 AndroidMainfest.xml 文件中添加：
+
+   <!-- 以下是sdk所需权限 -->
+    <!-- 基础功能所需权限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- 配网所需权限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- 对讲所需权限 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 视频通话权限所需 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <!-- 以上是sdk所需权限 -->
+配置build.gradle
+    defaultConfig {
+       ...
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+    }
+     sourceSets {
+        main {
+            jniLibs.srcDirs = ['libs']
+        }
+    }
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+
+SDK初始化
+
+1、使用平台申请的App AccessToken和账号密码登录
+2、获取到httpToken和appKey
+3、通过sdk 初始化
+
+    HikIotOpenSDK.instance.login(appAccessToken,account,pwd,
+        object : LoginCallback {
+            override fun onLoginSuccess(result: LoginResult?) {
+                //1、登录成功后获取httpToken和appKey
+                getHttpTokenAndInit()
+            }
+
+            override fun onLoginFailed(code: Int, msg: String, throwable: Throwable?) {
+                Toast.makeText(this@MainActivity,msg,Toast.LENGTH_LONG).show()
+            }
+
+        })
+
+//2、获取httpToken和appKey
+    private fun getHttpTokenAndInit(){
+        HikIotOpenSDK.instance.getHttpToken(object: BaseCallback<HttpTokenBean>{
+            override fun onSuccess(result: HttpTokenBean?) {
+                val tokenAppKey = result?.tokenAppKey?:return//参数异常
+                val httpUrlToken = result?.httpUrlToken?:return//参数异常
+                HikIotOpenSDK.instance.init(HikIotDemoApp.getApp(),tokenAppKey,httpUrlToken)//3、使用HikIotOpenSDK初始化
+                Log.d("token打印","${result}")
+            }
+
+            override fun onFailed(code: Int, msg: String, throwable: Throwable?) {
+                Toast.makeText(HikIotDemoApp.getApp(),msg,Toast.LENGTH_LONG).show()
+            }
+
+        })
+    }
+
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+
+代码混淆
+
+目前SDK在打包时不能混淆，请添加以下内容
+
+#========SDK对外接口=======#
+-keep class com.ezviz.opensdk.** { *;}
+
+-keep class com.hikiot.hikiotsdk.** { *;}
+
+#========以下是hik二方库=======#
+
+-dontwarn com.ezviz.**
+-keep class com.ezviz.** { *;}
+
+-dontwarn com.ez.**
+-keep class com.ez.** { *;}
+
+-dontwarn com.hc.CASClient.**
+-keep class com.hc.CASClient.** { *;}
+
+-dontwarn com.videogo.**
+-keep class com.videogo.** { *;}
+
+-dontwarn com.hik.TTSClient.**
+-keep class com.hik.TTSClient.** { *;}
+
+-dontwarn com.hik.stunclient.**
+-keep class com.hik.stunclient.** { *;}
+
+-dontwarn com.hik.streamclient.**
+-keep class com.hik.streamclient.** { *;}
+
+-dontwarn com.hikvision.sadp.**
+-keep class com.hikvision.sadp.** { *;}
+
+-dontwarn com.hikvision.netsdk.**
+-keep class com.hikvision.netsdk.** { *;}
+
+-dontwarn com.neutral.netsdk.**
+-keep class com.neutral.netsdk.** { *;}
+
+-dontwarn com.hikvision.audio.**
+-keep class com.hikvision.audio.** { *;}
+
+-dontwarn com.mediaplayer.audio.**
+-keep class com.mediaplayer.audio.** { *;}
+
+-dontwarn com.hikvision.wifi.**
+-keep class com.hikvision.wifi.** { *;}
+
+-dontwarn com.hikvision.keyprotect.**
+-keep class com.hikvision.keyprotect.** { *;}
+
+-dontwarn com.hikvision.audio.**
+-keep class com.hikvision.audio.** { *;}
+
+-dontwarn org.MediaPlayer.PlayM4.**
+-keep class org.MediaPlayer.PlayM4.** { *;}
+#========以上是hik二方库=======#
+
+#========以下是第三方开源库=======#
+# JNA
+-dontwarn com.sun.jna.**
+-keep class com.sun.jna.** { *;}
+
+# Gson
+-keepattributes *Annotation*
+-keep class sun.misc.Unsafe { *; }
+-keep class com.idea.fifaalarmclock.entity.***
+-keep class com.google.gson.stream.** { *; }
+
+# OkHttp
+# JSR 305 annotations are for embedding nullability information.
+-dontwarn javax.annotation.**
+# A resource is loaded with a relative path so the package of this class must be preserved.
+-keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
+# Animal Sniffer compileOnly dependency to ensure APIs are compatible with older versions of Java.
+-dontwarn org.codehaus.mojo.animal_sniffer.*
+# OkHttp platform used only on JVM and when Conscrypt dependency is available.
+-dontwarn okhttp3.internal.platform.ConscryptPlatform
+# 必须额外加的，否则编译无法通过
+-dontwarn okio.**
+#========以上是第三方开源库=======#
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+
+直播
+
+步骤
+
+1.创建播放器,绑定SurfaceHolder
+2.设置handler回调、设备如果设置了视频加密，需要设置视频加密密码，默认为设备的6位验证码
+3.启动播放
+4.停止播放
+5.释放播放器
+
+实例代码如下
+
+    HikIotPlayer player  = HikIotOpenSDK.instance.createPlayer(String deviceSerial,int cameraNo);
+
+    //设置Handler, 该handler将被用于从播放器向handler传递消息
+    player.setHandler(mHandler);
+
+    //设置播放器的显示Surface
+    player.setSurfaceHold(mHolder);
+
+    /**
+     * 设备加密的需要传入密码
+     * 传入视频加密密码，用于加密视频的解码，该接口可以在收到ERROR_INNER_VERIFYCODE_NEED或ERROR_INNER_VERIFYCODE_ERROR错误回调时调用
+     * @param verifyCode 视频加密密码，默认为设备的6位验证码
+     */
+    player.setPlayVerifyCode(String verifyCode);
+
+    //开启直播
+    player.startRealPlay();
+
+    //停止直播
+    player.stopRealPlay();
+
+    //释放资源
+    player.release();
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+
+说明
+
+1.直播播放成功后可以进行以下操作：录像、拍照、对讲、云台控制、声音开关，详见api的EZPlayer，其中设备控制该接口的如云台控制和镜头显示功能、对讲，属于限制级接口，要优选通过判断设备的能力集来调用，设备能力集请查看DeviceSupportAbility对象的属性值来判断具体方法；
+
+ //开启录像，recordFile录制本地路径，例如：Environment.getExternalStorageDirectory().getPath()+"/abc"
+  player.startLocalRecordWithFile(String recordFile)
+
+  //结束本地直播流录像与startLocalRecordWithFile成对使用
+  player.stopLocalRecord()
+
+  //截图
+  player.capturePicture()
+
+  //声音开关
+  player.openSound();
+  player.closeSound();
+
+
+  /**
+   * PTZ 控制接口
+   * 该接口为耗时操作，必须在线程中调用
+   * @param deviceSerial   设备序列号
+   * @param cameraNo        通道号
+   * @param command ptz控制命令
+   * @param action 控制启动/停止
+   * @param speed 速度（0-2）
+   * @return 操作成功或者失败(返回失败错误码)
+   */
+    HikIotOpenSDK.instance.controlPTZ(String deviceSerial,int cameraNo, EZPTZCommand command, EZPTZAction action, int speed)
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+
+
+2.EZOpenSDK中的setVideoLevel设置视频清晰度（videoLevel），此调节可以在视频播放前设置也可以在视频播放成功后设置，视频播放成功后设置了清晰度需要先停止播放stopRealPlay然后重新开启播放startRealPlay才能生效；
+
+    HikIotOpenSDK.instance.setVideoLevel(String deviceSerial,int cameraNo, int videoLevel);
+
+      //设置成功
+      // 停止播放 Stop play
+      stopRealPlay();
+      // 开始播放 start play
+      startRealPlay();
+
+1
+2
+3
+4
+5
+6
+7
+
+
+3.开始播放之后在消息回调中会收到
+
+a、成功消息：102 （EZRealPlayConstants.MSG_REALPLAY_PLAY_SUCCESS），
+b、视频画面分辨率回调：134 （EZConstants.MSG_VIDEO_SIZE_CHANGED），
+c、失败消息：103 （EZRealPlayConstants.MSG_REALPLAY_PLAY_FAIL），失败回调时查看errorCode，如果为400035（需要输入验证码）和400036（验证码错误），则需要开发者自己处理让用户重新输入验证密码，并调用setPlayVerifyCode设置密码，然后重新启动播放。
+
+1
+2
+3
+
+回放
+
+步骤
+
+1.创建播放器,绑定SurfaceHolder
+2.设置handler回调、设备如果设置了视频加密，需要设置视频加密密码，默认为设备的6位验证码
+3.启动播放
+4.停止播放
+5.释放播放器
+
+实例代码如下
+
+    HikIotPlayer player  = HikIotOpenSDK.instance.createPlayer(String deviceSerial,int cameraNo);
+
+    //设置Handler, 该handler将被用于从播放器向handler传递消息
+    player.setHandler(mHandler);
+
+    //设置播放器的显示Surface
+    player.setSurfaceHold(mHolder);
+
+    /**
+     * 设备加密的需要传入密码
+     * 传入视频加密密码，用于加密视频的解码，该接口可以在收到ERROR_INNER_VERIFYCODE_NEED或ERROR_INNER_VERIFYCODE_ERROR错误回调时调用
+     * @param verifyCode 视频加密密码，默认为设备的6位验证码
+     */
+    player.setPlayVerifyCode(String verifyCode);
+    /**
+     * 开始云存储远程回放
+     * @param cloudFile 云存储文件信息  参见下文中的 查询云存储录像信息列表
+     * @return  true 表示成功， false 表示失败
+     */
+    player.startPlayback(EZCloudRecordFile cloudFile)
+    
+    //或者
+    /**
+     * 开始远程SD卡回放
+     * @param deviceFile SD卡文件信息  参见下文中的 查询远程SD卡存储录像信息列表
+     * @return  true 表示成功， false 表示失败
+     */
+    player.startPlayback(EZDeviceRecordFile deviceFile)
+    
+    //或者
+    /**
+      * 开始远程SD卡回放---按时间回放
+      * @param startTime 开始时间
+      * @param stopTime 结束时间
+      * @return  true 表示成功， false 表示失败
+      */
+    player.startPlayback(Calendar startTime, Calendar stopTime)
+
+
+    /**
+      *  停止远程回放
+      */
+    player.stopPlayback()
+
+    //释放资源
+    player.release();
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+
+回放说明
+查询云存储录像信息列表
+  /**
+     * 查询云存储录像信息列表
+     * 该接口中有网络操作，需要在线程中调用
+     * @param deviceSerial 设备序列号
+     * @param cameraNo     camera的序号，EZCameraInfo.cameraNo
+     * @param startTime    查询时间范围开始时间
+     * @param endTime      查询时间范围结束时间
+     * @return 云存储录像信息列表
+     * @throws BaseException
+     */
+      HikIotOpenSDK.instance.searchRecordFileFromCloud(String deviceSerial, int cameraNo, Calendar startTime, Calendar endTime)
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+
+查询远程SD卡存储录像信息列表
+ /**
+     * 查询远程SD卡存储录像信息列表
+     * 当设备关联了NVR存储设备后，此时查找的是NVR设备中录像，不再提供查找设备SD卡中录像
+     * 该接口为耗时操作，必须在线程中调用
+     */
+    HikIotOpenSDK.instance.searchRecordFileFromDevice(String deviceSerial, int cameraNo, Calendar startTime, Calendar endTime)
+
+1
+2
+3
+4
+5
+6
+
+getOSDTime获取当前回放时间点，如果回放开始时间8:00，结束时间9:00，getOSDTime时间为8:30，那么播放进度为50%；
+回放播放成功后可以调用pausePlayback（暂停远程回放播放）和 resumePlayback（恢复远程回放播放）；
+/**
+ * 暂停远程回放播放
+ */
+player.pausePlayback()
+
+/**
+ * 恢复远程回放播放
+ */
+player.resumePlayback()
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+
+开始播放之后在消息回调中会收到
+a、成功消息：205 （EZConstants.EZPlaybackConstants.MSG_REMOTEPLAYBACK_PLAY_SUCCUSS），
+b、失败消息：206 （EZConstants.EZPlaybackConstants.MSG_REMOTEPLAYBACK_PLAY_FAIL），失败回调时查看errorCode，如果为400035（需要输入验证码）和400036（验证码错误），则需要开发者自己处理让用户重新输入验证密码，并调用setPlayVerifyCode设置密码，然后重新启动播放。
+c、视频画面分辨率回调：134 （EZConstants.MSG_VIDEO_SIZE_CHANGED）
+
+1
+2
+3
+
+下载回放
+////////////下载本地回放，即sd卡、硬盘上的回放
+ val strRecordFilePath: String = DIR + System.currentTimeMillis() + ".mp4"
+ val file = File(strRecordFilePath)
+ if (!file.parentFile.exists()) {
+     file.parentFile.mkdirs()
+ }
+ localDownloader = EZDeviceStreamDownload(strRecordFilePath, deviceSerial, channelNo, EZDeviceRecordFile().apply {
+     startTime = recordFile?.startTime
+     stopTime = recordFile?.stopTime
+ })//声明下载器，指定strRecordFilePath（下载路径）、deviceSerial（设备序列号）、channelNo（通道号）、EZDeviceRecordFile（回放时间范围）
+ localDownloader?.setStreamDownloadCallback(this)//设置下载回调，只支持回调成功和失败，不支持进度
+ localDownloader?.setSecretKey(encryptPwd)//如果视频加密，需设置解密密码
+ localDownloader?.start()//启动下载
+
+ ////////////下载云回放，即云存储的回放 与本地调用逻辑一致
+  val cloudDeviceFile = 
+    EZSDK.getEZOpenSDK()?.searchRecordFileFromCloud(deviceSerial, channelNo , recordFile?.startTime, recordFile?.stopTime)?.first()
+    //根据deviceSerial（设备序列号）、channelNo（通道号）、起始时间找到对应云回放的记录
+  val strRecordFilePath: String =
+      DIR + System.currentTimeMillis() + ".mp4"
+  val file = File(strRecordFilePath)
+  if (!file.parentFile.exists()) {
+      file.parentFile.mkdirs()
+  }
+  cloudDownloader = EZCloudStreamDownload(strRecordFilePath, cloudDeviceFile)
+  cloudDownloader?.setStreamDownloadCallback(this)
+  cloudDownloader?.setSecretKey(encryptPwd)
+  cloudDownloader?.start()
+
+
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+
+对讲
+步骤
+创建对讲播放器
+设置handler回调、设备如果设置了视频加密，需要设置视频加密密码，默认为设备的6位验证码
+启动对讲
+停止对讲
+释放对讲播放器
+实例代码如下
+  HikIotPlayer talk  = HikIotOpenSDK.instance.createPlayer(String deviceSerial,int cameraNo);
+    //设置Handler, 该handler将被用于从播放器向handler传递消息
+    talk.setHandler(mHandler);
+    /**
+      * 设备加密的需要传入密码
+      * 传入视频加密密码，用于加密视频的解码，该接口可以在收到ERROR_INNER_VERIFYCODE_NEED或ERROR_INNER_VERIFYCODE_ERROR错误回调时调用
+      * @param verifyCode 视频加密密码，默认为设备的6验证码
+      */
+    talk.setPlayVerifyCode(String verifyCode);
+
+
+    //开启对讲, isDeviceTalkBack参数是用于判断对讲的设备，true表示与当前设备对讲，false表示与NVR设备下的IPC通道对讲。
+    talk.startVoiceTalk(boolean isDeviceTalkBack)
+
+    //开启对讲
+    talk.startVoiceTalk();
+
+    //关闭对讲
+    talk.stopVoiceTalk();
+
+    //注意对于半双工对讲：需要调用上面接口开启对讲
+    //开启对讲后能听到设备端声音，但是设备端听不到自己的声音，需要以下操作setVoiceTalkStatus
+
+    //设备端听，手机端说
+    talk.setVoiceTalkStatus(true);
+
+    //手机端听，设备端说
+    talk.setVoiceTalkStatus(false);
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+
+对讲说明
+
+对讲流程需要根据设备的对讲能力进行区分处理。EZDeviceInfo中的isSupportTalk可获取到设备的对讲能力，0-不支持对讲，1-支持全双工对讲，3-支持半双工对讲。 同一设备需要开启不同功能（直播/回放/对讲）的播放器时，需要分别对每个功能创建一个播放器。播放器的功能是单一的
+
+关于对讲功能，如果播放有声音输出，则在开启对讲前需要关闭播放的声音closeSound，关闭对讲后开启播放的声音openSound，详见demo；
+
+开始对讲之后在消息回调中会收到
+
+a、成功消息：113 （RealPlayMsg.MSG_REALPLAY_VOICETALK_SUCCESS），
+b、失败消息：114 （RealPlayMsg.MSG_REALPLAY_VOICETALK_FAIL），失败回调时查看errorCode，如果为400035（需要输入验证码）和400036（验证码错误），则需要开发者自己处理让用户重新输入验证密码，并调用setPlayVerifyCode设置密码，然后重新启动播放。
+
+1
+2
+
+Demo 中用到的接口梳理
+
+Demo 中会用到开放平台提供的一些接口，接口说明请参考 开放平台上的开发文档，如下：
+
+授权登录：/v1/open/sdk/login，授权登录接口中返回的 userAccessToken 以及授权登录页的 appAccessToken，在登录成功后，需要设置到 http 请求的 header 中，具体参考 Demo
+获取设备列表：/device/v1/page
+获取非设备操作 token：/device/v1/token/device/get
+获取设备 token：/device/v1/token/ops/get
+获取设备/通道能力集：/device/v1/getDeviceCapacities
+获取清晰度：/device/direct/v1/streamingMedia/getAttrs
+
+注意：
+
+授权登录接口的域名与其它接口的域名不一样，授权登录接口的域名是 api.hikiot.com，而其它接口的域名是 open-api.hikiot.com
+Demo 整体代码是比较复杂的，主要是涉及到一些复杂的 UI 及状态变化，尤其是回放模块。但是，若只是开发预览、回放、对讲、云台、截图、录制等功能，实现是比较简单的，具体可以参考本文上面的章节。对于 UI 及交互方面，您可以按照自己的需求进行设计开发，Demo 仅供参考。
+
+下载DEMO
+
+DEMO APK 下载二维码：
+
+
+遇见问题？
+反馈问题
+HikIot开放平台Android SDK使用说明
+简介
+名词解释
+功能介绍
+隐私声明
+1、收集个人信息说明
+2、权限说明
+工程配置
+创建应用
+安装 SDK
+使用 aar 依赖
+配置工程
+配置 Android 权限
+SDK初始化
+代码混淆
+直播
+说明
+回放
+回放说明
+对讲
+步骤
+对讲说明
+Demo 中用到的接口梳理

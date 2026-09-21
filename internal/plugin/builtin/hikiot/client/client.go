@@ -53,18 +53,33 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 		_, _ = c.ExchangeAppToken()
 	}
 
-	url := c.BaseURL + path
-	var bodyReader io.Reader
-
-	if bodyData != nil {
-		b, err := json.Marshal(bodyData)
-		if err != nil {
-			return fmt.Errorf("序列化请求参数失败: %w", err)
-		}
-		bodyReader = bytes.NewBuffer(b)
+	urlStr := c.BaseURL + path
+	urlObj, err := http.NewRequest(method, urlStr, nil) // just for parsing url
+	if err != nil {
+		return fmt.Errorf("URL 解析失败: %w", err)
 	}
 
-	req, err := http.NewRequest(method, url, bodyReader)
+	var bodyReader io.Reader
+	if bodyData != nil {
+		if method == "GET" {
+			if m, ok := bodyData.(map[string]interface{}); ok {
+				q := urlObj.URL.Query()
+				for k, v := range m {
+					q.Add(k, fmt.Sprintf("%v", v))
+				}
+				urlObj.URL.RawQuery = q.Encode()
+				urlStr = urlObj.URL.String()
+			}
+		} else {
+			b, err := json.Marshal(bodyData)
+			if err != nil {
+				return fmt.Errorf("序列化请求参数失败: %w", err)
+			}
+			bodyReader = bytes.NewBuffer(b)
+		}
+	}
+
+	req, err := http.NewRequest(method, urlStr, bodyReader)
 	if err != nil {
 		return fmt.Errorf("创建 HTTP 请求失败: %w", err)
 	}
@@ -136,10 +151,24 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 // GetOrgs 查询组织节点（海康互联云端）
 func (c *Client) GetOrgs() ([]OrgDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/team/v1/depart/list", map[string]interface{}{
+	
+	// 尝试 GET 和 POST
+	err := c.DoRequest("GET", "/team/v1/depart/list", map[string]interface{}{
 		"pageNo":   1,
 		"pageSize": 500,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/team/v1/depart/list", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
+	if err != nil {
+		err = c.DoRequest("GET", "/artemis/api/resource/v1/org/orgList", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
 	if err != nil {
 		err = c.DoRequest("POST", "/artemis/api/resource/v1/org/orgList", map[string]interface{}{
 			"pageNo":   1,
@@ -159,10 +188,22 @@ func (c *Client) GetOrgs() ([]OrgDTO, error) {
 // GetPersons 查询人员档案（海康互联云端）
 func (c *Client) GetPersons() ([]PersonDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/team/v1/person/list", map[string]interface{}{
+	err := c.DoRequest("GET", "/team/v1/person/list", map[string]interface{}{
 		"pageNo":   1,
 		"pageSize": 500,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/team/v1/person/list", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
+	if err != nil {
+		err = c.DoRequest("GET", "/artemis/api/resource/v2/person/personList", map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+		}, &resp)
+	}
 	if err != nil {
 		err = c.DoRequest("POST", "/artemis/api/resource/v2/person/personList", map[string]interface{}{
 			"pageNo":   1,
@@ -182,40 +223,19 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 // GetDoors 查询门禁设备列表（海康互联云端）
 func (c *Client) GetDoors() ([]DoorDTO, error) {
 	var resp BaseResponse
-	endpoints := []string{
-		"/device/v1/channel/page",
-		"/device/v1/channel/list",
-		"/resource/v1/channel/page",
-		"/resource/v1/channel/list",
-		"/device/direct/v1/doorControl/doorList",
-		"/api/v1/open/basic/channels/list",
-		"/device/v1/page",
-		"/device/v1/list",
-		"/device/v1/deviceList",
-		"/artemis/api/resource/v1/door/doorList",
+	
+	// 首先尝试门禁资源专用接口
+	err := c.DoRequest("GET", "/device/acs/v1/doorList", nil, &resp)
+	if err != nil {
+		// 如果失败，尝试分页查询设备列表接口
+		err = c.DoRequest("GET", "/device/v1/page", map[string]interface{}{
+			"page": 1,
+			"size": 500,
+		}, &resp)
 	}
 
-	var lastErr error
-	for _, ep := range endpoints {
-		var r BaseResponse
-		err := c.DoRequest("POST", ep, map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &r)
-		if err == nil && r.Data != nil {
-			resp = r
-			break
-		}
-		if err != nil {
-			lastErr = err
-		}
-	}
-
-	if resp.Data == nil {
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		return nil, fmt.Errorf("海康 API 未能返回有效设备数据")
+	if err != nil || resp.Data == nil {
+		return nil, fmt.Errorf("海康 API 未能返回有效设备数据: %v", err)
 	}
 
 	b, _ := json.Marshal(resp.Data)
@@ -312,12 +332,20 @@ func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 // GetAttendanceRecords 查询考勤刷卡记录（海康互联云端）
 func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRecordDTO, error) {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/attendance/v1/event/page", map[string]interface{}{
+	err := c.DoRequest("GET", "/attendance/v1/event/page", map[string]interface{}{
 		"startTime": startTime,
 		"endTime":   endTime,
 		"pageNo":    1,
 		"pageSize":  1000,
 	}, &resp)
+	if err != nil {
+		err = c.DoRequest("POST", "/attendance/v1/event/page", map[string]interface{}{
+			"startTime": startTime,
+			"endTime":   endTime,
+			"pageNo":    1,
+			"pageSize":  1000,
+		}, &resp)
+	}
 	if err != nil {
 		err = c.DoRequest("POST", "/artemis/api/acs/v2/door/events", map[string]interface{}{
 			"startTime": startTime,
