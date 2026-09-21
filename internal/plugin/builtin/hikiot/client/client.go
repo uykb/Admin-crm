@@ -287,18 +287,25 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 // ControlDoor 远程控门指令（海康互联云端）
 func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	var resp BaseResponse
-	err := c.DoRequest("POST", "/device/direct/v1/doorControl/remoteControlDoor", map[string]interface{}{
-		"deviceSerial": doorIndexCode,
-		"doorNo":       1,
-		"cmd":          command,
-	}, &resp)
-	if err != nil {
-		err = c.DoRequest("POST", "/artemis/api/acs/v1/door/control", map[string]interface{}{
-			"doorIndexCodes": []string{doorIndexCode},
-			"controlType":    command,
-		}, &resp)
+	
+	// 注意：新版云端接口为 GET 请求
+	params := map[string]interface{}{
+		"resourceSerial": doorIndexCode,
+		"deviceSerial":   doorIndexCode, // 兼容文档表格和调用示例的不一致
 	}
-	return err
+	
+	err := c.DoRequest("GET", "/issue/v1/device/openDoor", params, &resp)
+	if err != nil {
+		// 降级尝试旧版 POST 接口
+		errV1 := c.DoRequest("POST", "/device/direct/v1/doorControl/doorList", map[string]interface{}{
+			"doorIndexCodes": []string{doorIndexCode},
+			"command":        command,
+		}, &resp)
+		if errV1 != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetAttendanceRecords 查询考勤刷卡记录（海康互联云端）
