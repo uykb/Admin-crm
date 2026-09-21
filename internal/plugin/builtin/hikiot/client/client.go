@@ -88,6 +88,8 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 	if c.AppAccessToken != "" {
 		req.Header.Set("App-Access-Token", c.AppAccessToken)
 		req.Header.Set("token", c.AppAccessToken)
+		req.Header.Set("access_token", c.AppAccessToken)
+		req.Header.Set("Authorization", "Bearer "+c.AppAccessToken)
 	}
 	req.Header.Set("x-ca-key", c.AppKey)
 	req.Header.Set("x-ca-timestamp", timestamp)
@@ -251,6 +253,43 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 	}
 
 	return list, nil
+}
+
+// DebugEndpoints 测试各个端点并返回详细结果（供诊断使用）
+func (c *Client) DebugEndpoints() string {
+	endpoints := []string{
+		"/device/v1/channel/page",
+		"/api/v1/open/basic/channels/list",
+		"/device/v1/list",
+		"/device/direct/v1/doorControl/doorList",
+		"/resource/v1/channel/page",
+		"/api/v1/estate/devices/list",
+		"/device/v1/channel/list",
+		"/artemis/api/resource/v1/door/doorList",
+	}
+	
+	var sb strings.Builder
+	sb.WriteString("=== Debug Doors Endpoints ===\n")
+	
+	for _, ep := range endpoints {
+		var rawResp map[string]interface{}
+		err := c.DoRequest("POST", ep, map[string]interface{}{
+			"pageNo":   1,
+			"pageSize": 500,
+			"page":     1,
+			"size":     500,
+		}, &rawResp)
+		
+		sb.WriteString(fmt.Sprintf("Endpoint: %s\n", ep))
+		if err != nil {
+			sb.WriteString(fmt.Sprintf("Error: %v\n", err))
+		} else {
+			b, _ := json.Marshal(rawResp)
+			sb.WriteString(fmt.Sprintf("Response: %s\n", string(b)))
+		}
+		sb.WriteString("------------------------\n")
+	}
+	return sb.String()
 }
 
 // ControlDoor 远程控门指令（海康互联云端）
