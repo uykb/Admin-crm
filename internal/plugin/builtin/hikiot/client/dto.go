@@ -46,15 +46,21 @@ type AppTokenData struct {
 
 // OrgDTO 海康组织节点结构
 type OrgDTO struct {
-	OrgIndexCode       string `json:"orgIndexCode"`
-	OrgName            string `json:"orgName"`
-	ParentOrgIndexCode string `json:"parentOrgIndexCode"`
-	DeptID             string `json:"deptId"`
-	DeptName           string `json:"deptName"`
-	ParentID           string `json:"parentId"`
+	OrgIndexCode       string      `json:"orgIndexCode"`
+	OrgName            string      `json:"orgName"`
+	ParentOrgIndexCode string      `json:"parentOrgIndexCode"`
+	DeptID             string      `json:"deptId"`
+	DeptName           string      `json:"deptName"`
+	DepartNo           string      `json:"departNo"`
+	DepartName         string      `json:"departName"`
+	ParentID           interface{} `json:"parentId"`
+	IsLeaf             bool        `json:"isLeaf"`
 }
 
 func (o *OrgDTO) GetCode() string {
+	if o.DepartNo != "" {
+		return o.DepartNo
+	}
 	if o.OrgIndexCode != "" {
 		return o.OrgIndexCode
 	}
@@ -62,10 +68,23 @@ func (o *OrgDTO) GetCode() string {
 }
 
 func (o *OrgDTO) GetName() string {
+	if o.DepartName != "" {
+		return o.DepartName
+	}
 	if o.OrgName != "" {
 		return o.OrgName
 	}
 	return o.DeptName
+}
+
+func (o *OrgDTO) GetParentCode() string {
+	if o.ParentOrgIndexCode != "" {
+		return o.ParentOrgIndexCode
+	}
+	if o.ParentID != nil {
+		return fmt.Sprintf("%v", o.ParentID)
+	}
+	return ""
 }
 
 // PersonDTO 海康人员数据结构

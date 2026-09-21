@@ -157,41 +157,54 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 	return nil
 }
 
-// GetOrgs 查询组织节点（海康互联云端）
+// GetOrgs 查询组织/部门节点（海康互联云端）
 func (c *Client) GetOrgs() ([]OrgDTO, error) {
-	var resp BaseResponse
-	
-	// 尝试 GET 和 POST
-	err := c.DoRequest("GET", "/team/v1/depart/list", map[string]interface{}{
-		"pageNo":   1,
-		"pageSize": 500,
-	}, &resp)
-	if err != nil {
-		err = c.DoRequest("POST", "/team/v1/depart/list", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		err = c.DoRequest("GET", "/artemis/api/resource/v1/org/orgList", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		err = c.DoRequest("POST", "/artemis/api/resource/v1/org/orgList", map[string]interface{}{
-			"pageNo":   1,
-			"pageSize": 500,
-		}, &resp)
-	}
-	if err != nil {
-		return nil, err
+	var allOrgs []OrgDTO
+	visited := make(map[string]bool)
+	queue := []string{""} // 根节点留空
+
+	for len(queue) > 0 {
+		currNo := queue[0]
+		queue = queue[1:]
+
+		params := map[string]interface{}{}
+		if currNo != "" {
+			params["departNo"] = currNo
+		}
+
+		var resp BaseResponse
+		err := c.DoRequest("GET", "/team/v1/depart/getDeparts", params, &resp)
+		if err != nil {
+			if len(allOrgs) > 0 {
+				break
+			}
+			return nil, err
+		}
+
+		b, _ := json.Marshal(resp.Data)
+		var wrapper struct {
+			TeamDepartVOs []OrgDTO `json:"teamDepartVOs"`
+		}
+		var list []OrgDTO
+		if json.Unmarshal(b, &wrapper) == nil && len(wrapper.TeamDepartVOs) > 0 {
+			list = wrapper.TeamDepartVOs
+		} else {
+			_ = json.Unmarshal(b, &list)
+		}
+
+		for _, item := range list {
+			code := item.GetCode()
+			if code != "" && !visited[code] {
+				visited[code] = true
+				allOrgs = append(allOrgs, item)
+				if !item.IsLeaf && item.DepartNo != "" {
+					queue = append(queue, item.DepartNo)
+				}
+			}
+		}
 	}
 
-	b, _ := json.Marshal(resp.Data)
-	var list []OrgDTO
-	_ = json.Unmarshal(b, &list)
-	return list, nil
+	return allOrgs, nil
 }
 
 // GetPersons 查询人员档案（海康互联云端）
