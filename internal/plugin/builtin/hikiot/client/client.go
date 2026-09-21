@@ -284,45 +284,6 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 	return list, nil
 }
 
-// DebugEndpoints 测试各个端点并返回详细结果（供诊断使用）
-func (c *Client) DebugEndpoints() string {
-	endpoints := []struct {
-		method string
-		path   string
-	}{
-		{"GET", "/device/acs/v1/doorList"},
-		{"GET", "/device/v1/page"},
-		{"GET", "/team/v1/depart/list"},
-		{"GET", "/team/v1/person/list"},
-		{"GET", "/attendance/v1/event/page"},
-	}
-
-	var sb strings.Builder
-	sb.WriteString("=== Debug Endpoints ===\n")
-
-	for _, ep := range endpoints {
-		sb.WriteString(fmt.Sprintf("Endpoint: [%s] %s\n", ep.method, ep.path))
-		var rawResp map[string]interface{}
-		
-		var params map[string]interface{}
-		if ep.path == "/device/v1/page" {
-			params = map[string]interface{}{"page": 1, "size": 100}
-		} else {
-			params = map[string]interface{}{"pageNo": 1, "pageSize": 100}
-		}
-
-		err := c.DoRequest(ep.method, ep.path, params, &rawResp)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("Error: %v\n", err))
-		} else {
-			b, _ := json.MarshalIndent(rawResp, "", "  ")
-			sb.WriteString(fmt.Sprintf("Success! Raw Response:\n%s\n", string(b)))
-		}
-		sb.WriteString("------------------------\n")
-	}
-	return sb.String()
-}
-
 // ControlDoor 远程控门指令（海康互联云端）
 func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	var resp BaseResponse

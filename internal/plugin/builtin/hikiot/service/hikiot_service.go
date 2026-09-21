@@ -89,8 +89,6 @@ func (s *HikService) SaveConfig(baseURL, appKey, appSecret, userToken string) er
 
 // ListDoors 获取门禁设备点列表（纯真实数据）
 func (s *HikService) ListDoors() ([]hkmodel.HkDoor, error) {
-	// 清理历史 Mock 沙箱数据
-	s.db.Exec("DELETE FROM hk_door WHERE door_index_code LIKE 'D100%'")
 
 	var list []hkmodel.HkDoor
 	s.db.Order("id ASC").Find(&list)
