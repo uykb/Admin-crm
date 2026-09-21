@@ -209,14 +209,8 @@ func (c *Client) GetOrgs() ([]OrgDTO, error) {
 
 // GetPersons 查询人员档案（海康互联云端）
 func (c *Client) GetPersons() ([]PersonDTO, error) {
-	orgs, _ := c.GetOrgs()
+	departNos := []string{"BM54141022"} // 只针对指定部门
 
-	departNos := []string{"BM54141022"} // 保证包含指定部门
-	for _, o := range orgs {
-		if code := o.GetCode(); code != "" && code != "BM54141022" {
-			departNos = append(departNos, code)
-		}
-	}
 
 	allPersonsMap := make(map[string]PersonDTO)
 	var lastErr error
@@ -231,7 +225,9 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 		for {
 			params := map[string]interface{}{
 				"page":          page,
+				"pageNo":        page,
 				"size":          pageSize,
+				"pageSize":      pageSize,
 				"departNo":      dNo,
 				"hasLeafDepart": true,
 			}

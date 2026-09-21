@@ -27,6 +27,12 @@ const HikUIHTML = `<!DOCTYPE html>
     .status-online { background: #10b981; }
     .status-offline { background: #9ca3af; }
     .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; }
+    .shift-day { background-color: #d1f2e1 !important; color: #008a3d !important; font-weight: bold; cursor: pointer; text-align: center; }
+    .shift-night { background-color: #e0e0ff !important; color: #4f46e5 !important; font-weight: bold; cursor: pointer; text-align: center; }
+    .shift-exception { background-color: #ffe4e6 !important; color: #e11d48 !important; font-weight: bold; cursor: pointer; text-align: center; }
+    .shift-blank { background-color: transparent !important; cursor: pointer; text-align: center; }
+    .shift-leave { background-color: #fef3c7 !important; color: #d97706 !important; font-weight: bold; cursor: pointer; text-align: center; }
+    .el-table .cell { padding: 0 4px !important; }
   </style>
 </head>
 <body>
@@ -125,7 +131,79 @@ const HikUIHTML = `<!DOCTYPE html>
             </el-pagination>
           </div>
         </el-tab-pane>
+
+        <!-- 标签页 4：排班考勤汇总 -->
+        <el-tab-pane label="排班考勤汇总" name="matrix">
+          <div class="filter-bar">
+            <el-date-picker
+              v-model="matrixMonth"
+              type="month"
+              placeholder="选择月份"
+              value-format="YYYY-MM"
+              @change="loadMatrix">
+            </el-date-picker>
+            <el-button type="primary" :loading="calculatingMatrix" @click="calculateMatrix">
+              <el-icon><cpu /></el-icon> 一键智能排班判定
+            </el-button>
+          </div>
+
+          <el-table :data="matrixData" stripe v-loading="loadingMatrix" style="width: 100%; margin-top: 15px;" border>
+            <el-table-column prop="person_name" label="姓名" width="90" fixed="left"></el-table-column>
+            <el-table-column prop="job_no" label="工号" width="100" fixed="left"></el-table-column>
+            <el-table-column label="考勤规则" width="90" fixed="left">
+               <template #default>排班打卡</template>
+            </el-table-column>
+            
+            <el-table-column v-for="day in daysInMonth" :key="day.num" width="50" align="center">
+              <template #header>
+                <div style="line-height: 1.2; font-size: 12px; color: #606266;">
+                  <div>{{ day.week }}</div>
+                  <div>{{ parseInt(day.num) }}</div>
+                </div>
+              </template>
+              <template #default="scope">
+                <div 
+                  :class="getCellClass(scope.row.days[day.num])" 
+                  @click="handleCellClick(scope.row, day.num)"
+                  style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; min-height: 40px; font-size: 12px;">
+                  {{ scope.row.days[day.num] || '' }}
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
       </el-tabs>
+
+      <!-- 手工调整弹窗 -->
+      <el-dialog v-model="editDialogVisible" title="考勤结果手工调整" width="400px">
+        <el-form :model="editForm" label-width="80px">
+          <el-form-item label="员工">
+            <el-input v-model="editForm.personName" disabled></el-input>
+          </el-form-item>
+          <el-form-item label="日期">
+            <el-input v-model="editForm.date" disabled></el-input>
+          </el-form-item>
+          <el-form-item label="判定状态">
+            <el-select v-model="editForm.shiftType" style="width: 100%">
+              <el-option label="白班" value="白班"></el-option>
+              <el-option label="夜班" value="夜班"></el-option>
+              <el-option label="异常" value="异常"></el-option>
+              <el-option label="缺卡" value="缺卡"></el-option>
+              <el-option label="请假" value="请假"></el-option>
+              <el-option label="休息" value="休息"></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="editForm.remark" type="textarea"></el-input>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="editDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="savingEdit" @click="saveEdit">保存</el-button>
+          </span>
+        </template>
+      </el-dialog>
     </div>
   </div>
 
@@ -243,11 +321,122 @@ const HikUIHTML = `<!DOCTYPE html>
           loadDoors();
         });
 
+        // --- 排班矩阵视图逻辑 ---
+        const matrixMonth = ref(new Date().toISOString().slice(0, 7)); // 默认当前月
+        const matrixData = ref([]);
+        const loadingMatrix = ref(false);
+        const calculatingMatrix = ref(false);
+        const daysInMonth = ref([]);
+        
+        const editDialogVisible = ref(false);
+        const savingEdit = ref(false);
+        const editForm = reactive({ personId: '', personName: '', date: '', shiftType: '', remark: '' });
+
+        const loadMatrix = async () => {
+          if (!matrixMonth.value) return;
+          loadingMatrix.value = true;
+          try {
+            // 计算这个月有多少天，生成动态列
+            const [y, m] = matrixMonth.value.split('-');
+            const days = new Date(y, m, 0).getDate();
+            const cols = [];
+            const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+            for (let i = 1; i <= days; i++) {
+              const d = new Date(y, parseInt(m) - 1, i);
+              cols.push({
+                num: i.toString().padStart(2, '0'),
+                week: weekDays[d.getDay()]
+              });
+            }
+            daysInMonth.value = cols;
+
+            const res = await fetch('/api/v1/hikiot/attendance/matrix?month=' + matrixMonth.value, { headers: getAuthHeader() });
+            const json = await res.json();
+            if (json.code === 200) {
+              matrixData.value = json.data || [];
+            }
+          } catch(e) {}
+          loadingMatrix.value = false;
+        };
+
+        const calculateMatrix = async () => {
+          if (!matrixMonth.value) return;
+          calculatingMatrix.value = true;
+          try {
+            const res = await fetch('/api/v1/hikiot/attendance/calculate', {
+              method: 'POST',
+              headers: getAuthHeader(),
+              body: JSON.stringify({ month: matrixMonth.value })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('计算完成');
+              await loadMatrix();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '计算失败');
+            }
+          } catch(e) {}
+          calculatingMatrix.value = false;
+        };
+
+        const getCellClass = (shiftType) => {
+          if (shiftType === '白班') return 'shift-day';
+          if (shiftType === '夜班') return 'shift-night';
+          if (shiftType === '请假' || shiftType === '休息') return 'shift-leave';
+          if (shiftType && shiftType !== '空白') return 'shift-exception';
+          return 'shift-blank';
+        };
+
+        const handleCellClick = (row, day) => {
+          editForm.personId = row.person_id;
+          editForm.personName = row.person_name;
+          editForm.date = matrixMonth.value + '-' + day;
+          editForm.shiftType = row.days[day] || '空白';
+          editForm.remark = row.details[day] ? row.details[day].remark : '';
+          editDialogVisible.value = true;
+        };
+
+        const saveEdit = async () => {
+          savingEdit.value = true;
+          try {
+            const res = await fetch('/api/v1/hikiot/attendance/result', {
+              method: 'PUT',
+              headers: getAuthHeader(),
+              body: JSON.stringify({
+                person_id: editForm.personId,
+                date: editForm.date,
+                shift_type: editForm.shiftType,
+                remark: editForm.remark
+              })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('调整保存成功');
+              editDialogVisible.value = false;
+              await loadMatrix();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '保存失败');
+            }
+          } catch(e) {}
+          savingEdit.value = false;
+        };
+
+        // --- 拦截 tab 切换加载矩阵 ---
+        const originalHandleTabChange = handleTabChange;
+        const newHandleTabChange = (name) => {
+          if (name === 'matrix' && matrixData.value.length === 0) {
+             loadMatrix();
+          }
+          originalHandleTabChange(name);
+        };
+
         return {
           activeTab, doors, loadingDoors, syncingDoors, controlling,
           attendance, loadingAtt, attQuery, loadAttendance,
           persons, loadingPersons, syncingPersons, personKeyword, personPage, personPageSize, loadPersons, syncPersons,
-          loadDoors, controlDoor, handleTabChange
+          loadDoors, controlDoor, handleTabChange: newHandleTabChange,
+          matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
+          getCellClass, handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit
         };
       }
     });

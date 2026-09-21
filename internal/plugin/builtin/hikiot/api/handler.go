@@ -57,6 +57,42 @@ func (h *HikHandler) SaveConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success("保存成功"))
 }
 
+// TestPersons 测试人员分页接口直接返回
+func (h *HikHandler) TestPersons(c *gin.Context) {
+	page := c.Query("page")
+	if page == "" {
+		page = "1"
+	}
+	size := c.Query("size")
+	if size == "" {
+		size = "50"
+	}
+	departNo := c.Query("departNo")
+
+	cli, err := h.svc.GetClient()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	params := map[string]interface{}{
+		"page":          page,
+		"size":          size,
+		"hasLeafDepart": true,
+	}
+	if departNo != "" {
+		params["departNo"] = departNo
+	}
+
+	var resp map[string]interface{}
+	err = cli.DoRequest("GET", "/team/v1/person/page", params, &resp)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, resp)
+}
+
 // ListDoors 获取门禁设备列表
 func (h *HikHandler) ListDoors(c *gin.Context) {
 	list, err := h.svc.ListDoors()
@@ -143,6 +179,58 @@ func (h *HikHandler) SyncPersons(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(gin.H{"synced_count": count}))
 }
 
+// CalculateMatrix 一键智能排班计算
+func (h *HikHandler) CalculateMatrix(c *gin.Context) {
+	var req struct {
+		Month string `json:"month" binding:"required"` // "2026-09"
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	err := h.svc.CalculateMonthlyAttendance(req.Month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "排班计算失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success("计算完成"))
+}
+
+// GetMatrixData 获取排班矩阵数据
+func (h *HikHandler) GetMatrixData(c *gin.Context) {
+	month := c.Query("month")
+	if month == "" {
+		c.JSON(http.StatusBadRequest, response.Error(400, "必须指定 month"))
+		return
+	}
+	data, err := h.svc.GetMonthlyAttendanceMatrix(month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "查询失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(data))
+}
+
+// UpdateMatrixResult 手工覆盖排班结果
+func (h *HikHandler) UpdateMatrixResult(c *gin.Context) {
+	var req struct {
+		PersonID  string `json:"person_id" binding:"required"`
+		Date      string `json:"date" binding:"required"`
+		ShiftType string `json:"shift_type" binding:"required"`
+		Remark    string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	err := h.svc.UpdateAttendanceResult(req.PersonID, req.Date, req.ShiftType, req.Remark)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "更新失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success("更新成功"))
+}
+
 // SetupRoutes 挂载路由规则
 func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 	api := group.Group("/hikiot")
@@ -157,5 +245,8 @@ func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 		api.GET("/persons/search", handler.SearchPerson)
 		api.POST("/sync/orgs", handler.SyncOrgs)
 		api.POST("/sync/persons", handler.SyncPersons)
+		api.GET("/attendance/matrix", handler.GetMatrixData)
+		api.POST("/attendance/calculate", handler.CalculateMatrix)
+		api.PUT("/attendance/result", handler.UpdateMatrixResult)
 	}
 }

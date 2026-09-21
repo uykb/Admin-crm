@@ -216,7 +216,7 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 		}
 	}
 
-	err := query.Order("clock_time DESC").Limit(200).Find(&list).Error
+	err := query.Order("clock_time DESC").Limit(2000).Find(&list).Error
 
 	// 尝试自动同步真实考勤记录
 	cli, errCli := s.GetClient()
@@ -260,7 +260,7 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 				}
 				s.db.Create(&item)
 			}
-			query.Order("clock_time DESC").Limit(200).Find(&list)
+			query.Order("clock_time DESC").Limit(2000).Find(&list)
 			return list, nil
 		}
 	}
@@ -351,10 +351,10 @@ func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
 		query = query.Where("person_name LIKE ? OR job_no LIKE ? OR phone_no LIKE ?",
 			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
 	}
-	err := query.Limit(50).Find(&list).Error
+	err := query.Find(&list).Error
 	if len(list) == 0 && keyword == "" {
 		_, _ = s.SyncPersons()
-		s.db.Limit(50).Find(&list)
+		s.db.Find(&list)
 	}
 	if list == nil {
 		list = []hkmodel.HkPerson{}
