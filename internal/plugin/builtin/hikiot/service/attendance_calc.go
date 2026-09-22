@@ -68,12 +68,12 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		_, _ = s.SyncPersons()
 	}
 
-	// 2. 从本地数据库拉取当月全量考勤流水（多往前查1天，往后查2天）
+	// 2. 从本地数据库拉取当月全量考勤流水（只针对 BM54141022 部门）
 	queryStart := monthStart.AddDate(0, 0, -1)
 	queryEnd := monthStart.AddDate(0, 1, 2)
 
 	var records []model.HkAttendance
-	err = s.db.Where("clock_time >= ? AND clock_time < ?", queryStart, queryEnd).
+	err = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", queryStart, queryEnd, "BM54141022").
 		Order("person_id ASC, clock_time ASC").
 		Find(&records).Error
 	if err != nil {
@@ -105,9 +105,9 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		}
 	}
 
-	// 如果没有记录的人（比如在 hk_person 表里但当月没打卡），也保留其信息
+	// 仅获取 BM54141022 部门人员
 	var allPersons []model.HkPerson
-	s.db.Find(&allPersons)
+	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&allPersons)
 	for _, p := range allPersons {
 		if _, ok := personNames[p.PersonID]; !ok {
 			personNames[p.PersonID] = p.PersonName
@@ -244,19 +244,15 @@ type MatrixRow struct {
 	Details    map[string]model.HkAttendanceResult `json:"details"` // 完整信息
 }
 
-// GetMonthlyAttendanceMatrix 获取月度矩阵视图数据
+// GetMonthlyAttendanceMatrix 获取月度矩阵视图数据（仅针对 BM54141022 部门）
 func (s *HikService) GetMonthlyAttendanceMatrix(monthStr string) ([]MatrixRow, error) {
-	var results []model.HkAttendanceResult
-	err := s.db.Where("date LIKE ?", monthStr+"%").Order("date ASC").Find(&results).Error
-	if err != nil {
-		return nil, err
-	}
-
 	var allPersons []model.HkPerson
-	s.db.Find(&allPersons)
+	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&allPersons)
 
+	validPersonIDs := make(map[string]bool)
 	rowMap := make(map[string]*MatrixRow)
 	for _, p := range allPersons {
+		validPersonIDs[p.PersonID] = true
 		rowMap[p.PersonID] = &MatrixRow{
 			PersonID:   p.PersonID,
 			PersonName: p.PersonName,
@@ -266,15 +262,15 @@ func (s *HikService) GetMonthlyAttendanceMatrix(monthStr string) ([]MatrixRow, e
 		}
 	}
 
+	var results []model.HkAttendanceResult
+	err := s.db.Where("date LIKE ?", monthStr+"%").Order("date ASC").Find(&results).Error
+	if err != nil {
+		return nil, err
+	}
+
 	for _, r := range results {
-		if _, ok := rowMap[r.PersonID]; !ok {
-			rowMap[r.PersonID] = &MatrixRow{
-				PersonID:   r.PersonID,
-				PersonName: r.PersonName,
-				JobNo:      r.JobNo,
-				Days:       make(map[string]string),
-				Details:    make(map[string]model.HkAttendanceResult),
-			}
+		if !validPersonIDs[r.PersonID] {
+			continue // 过滤非 BM54141022 部门人员
 		}
 		if len(r.Date) >= 10 {
 			day := r.Date[len(r.Date)-2:]

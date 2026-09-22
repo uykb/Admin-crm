@@ -198,7 +198,8 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 	s.db.Exec("DELETE FROM hk_attendance WHERE person_id LIKE 'P800%'")
 
 	var list []hkmodel.HkAttendance
-	query := s.db.Model(&hkmodel.HkAttendance{})
+	query := s.db.Model(&hkmodel.HkAttendance{}).
+		Where("person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", "BM54141022")
 
 	if personName != "" {
 		query = query.Where("person_name LIKE ?", "%"+personName+"%")
@@ -304,7 +305,7 @@ func (s *HikService) SyncOrgs() (int, error) {
 	return 0, nil
 }
 
-// SyncPersons 同步人员档案（纯真实数据）
+// SyncPersons 手动同步人员档案（纯真实数据，指定部门 BM54141022）
 func (s *HikService) SyncPersons() (int, error) {
 	// 清理历史 Mock 沙箱数据
 	s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
@@ -320,12 +321,16 @@ func (s *HikService) SyncPersons() (int, error) {
 				if id == "" {
 					continue
 				}
+				orgCode := dto.GetOrgCode()
+				if orgCode == "" {
+					orgCode = "BM54141022"
+				}
 				item := hkmodel.HkPerson{
 					PersonID:     id,
 					PersonName:   name,
 					JobNo:        dto.GetJobNo(),
 					PhoneNo:      dto.GetPhone(),
-					OrgIndexCode: dto.GetOrgCode(),
+					OrgIndexCode: orgCode,
 					OrgName:      dto.OrgName,
 				}
 				_ = s.db.Clauses(clause.OnConflict{
@@ -340,13 +345,15 @@ func (s *HikService) SyncPersons() (int, error) {
 	return 0, nil
 }
 
-// SearchPerson 检索人员信息（纯真实数据）
+// SearchPerson 检索人员信息（仅针对指定部门 BM54141022）
 func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
 	// 清理历史 Mock 沙箱数据
 	s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
 
 	var list []hkmodel.HkPerson
-	query := s.db.Model(&hkmodel.HkPerson{})
+	query := s.db.Model(&hkmodel.HkPerson{}).
+		Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022")
+
 	if keyword != "" {
 		query = query.Where("person_name LIKE ? OR job_no LIKE ? OR phone_no LIKE ?",
 			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
@@ -354,7 +361,7 @@ func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
 	err := query.Find(&list).Error
 	if len(list) == 0 && keyword == "" {
 		_, _ = s.SyncPersons()
-		s.db.Find(&list)
+		s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&list)
 	}
 	if list == nil {
 		list = []hkmodel.HkPerson{}
