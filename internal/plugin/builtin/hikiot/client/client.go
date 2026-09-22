@@ -422,24 +422,67 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 		endDate = time.Now().Format("2006-01-02")
 	}
 
-	payload := map[string]interface{}{
-		"beginDate":             beginDate,
-		"endDate":               endDate,
-		"page":                  1,
-		"size":                  100,
-		"containsDeletedPerson": true,
+	var allRecords []AttendanceRecordDTO
+	pageSize := 100
+	page := 1
+
+	for {
+		payload := map[string]interface{}{
+			"beginDate":             beginDate,
+			"endDate":               endDate,
+			"page":                  page,
+			"pageNo":                page,
+			"size":                  pageSize,
+			"pageSize":              pageSize,
+			"containsDeletedPerson": true,
+		}
+
+		var resp BaseResponse
+		err := c.DoRequest("POST", "/attendance/v1/origin-record/page", payload, &resp)
+		if err != nil {
+			if len(allRecords) > 0 {
+				break
+			}
+			return nil, err
+		}
+
+		b, _ := json.Marshal(resp.Data)
+		var list []AttendanceRecordDTO
+		var wrapper struct {
+			List []AttendanceRecordDTO `json:"list"`
+			Rows []AttendanceRecordDTO `json:"rows"`
+			Data []AttendanceRecordDTO `json:"data"`
+		}
+		if json.Unmarshal(b, &wrapper) == nil {
+			if len(wrapper.List) > 0 {
+				list = wrapper.List
+			} else if len(wrapper.Rows) > 0 {
+				list = wrapper.Rows
+			} else if len(wrapper.Data) > 0 {
+				list = wrapper.Data
+			}
+		}
+		if len(list) == 0 {
+			_ = json.Unmarshal(b, &list)
+		}
+
+		if len(list) == 0 {
+			break
+		}
+
+		allRecords = append(allRecords, list...)
+
+		if len(list) < pageSize {
+			break
+		}
+
+		page++
+		if page > 100 {
+			break
+		}
 	}
 
-	var resp BaseResponse
-	err := c.DoRequest("POST", "/attendance/v1/origin-record/page", payload, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	b, _ := json.Marshal(resp.Data)
-	var list []AttendanceRecordDTO
-	_ = json.Unmarshal(b, &list)
-	return list, nil
+	return allRecords, nil
 }
 
 // ExchangeAppToken 海康互联云端获取 App Token

@@ -258,7 +258,7 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 					DoorName:   devName,
 					VerifyMode: r.VerifyMode,
 				}
-				s.db.Create(&item)
+				s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&item)
 			}
 			query.Order("clock_time DESC").Limit(2000).Find(&list)
 			return list, nil

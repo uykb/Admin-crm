@@ -51,10 +51,10 @@ func (HkDoor) TableName() string {
 // HkAttendance 海康打卡考勤记录实体
 type HkAttendance struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
-	PersonID   string    `gorm:"type:varchar(64);index;not null" json:"person_id"`
+	PersonID   string    `gorm:"type:varchar(64);uniqueIndex:idx_person_clock;not null" json:"person_id"`
 	PersonName string    `gorm:"type:varchar(64);not null" json:"person_name"`
 	JobNo      string    `gorm:"type:varchar(64)" json:"job_no"`
-	ClockTime  time.Time `gorm:"index;not null" json:"clock_time"`
+	ClockTime  time.Time `gorm:"uniqueIndex:idx_person_clock;not null" json:"clock_time"`
 	DoorName   string    `gorm:"type:varchar(128)" json:"door_name"`
 	VerifyMode int       `gorm:"default:1" json:"verify_mode"`
 	CreatedAt  time.Time `json:"created_at"`
