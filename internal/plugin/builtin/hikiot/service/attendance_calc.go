@@ -27,7 +27,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 
 		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
 		if errRec == nil && len(records) > 0 {
-			var toCreate []model.HkAttendance
+			toCreateMap := make(map[string]model.HkAttendance)
 			for _, r := range records {
 				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
 				if t.IsZero() {
@@ -50,14 +50,19 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 					devName = r.Address
 				}
 
-				toCreate = append(toCreate, model.HkAttendance{
+				key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
+				toCreateMap[key] = model.HkAttendance{
 					PersonID:   pID,
 					PersonName: r.PersonName,
 					JobNo:      jNo,
 					ClockTime:  t,
 					DoorName:   devName,
 					VerifyMode: r.VerifyMode,
-				})
+				}
+			}
+			var toCreate []model.HkAttendance
+			for _, v := range toCreateMap {
+				toCreate = append(toCreate, v)
 			}
 			if len(toCreate) > 0 {
 				s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&toCreate)
@@ -115,7 +120,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		}
 	}
 
-	var resultsToSave []model.HkAttendanceResult
+	resultMap := make(map[string]model.HkAttendanceResult)
 
 	for pID, recs := range personRecords {
 		// 会话分组 (Session Grouping)
@@ -211,7 +216,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 				}
 			}
 
-			resultsToSave = append(resultsToSave, model.HkAttendanceResult{
+			newRes := model.HkAttendanceResult{
 				PersonID:   pID,
 				PersonName: personNames[pID],
 				JobNo:      personJobs[pID],
@@ -221,8 +226,31 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 				LastClock:  t2.Format("2006-01-02 15:04:05"),
 				IsManual:   false,
 				Remark:     remark,
-			})
+			}
+
+			key := fmt.Sprintf("%s_%s", pID, dateStr)
+			if old, exists := resultMap[key]; exists {
+				// 如果同一个 (PersonID, Date) 计算出了多个结果，内存去重防 Postgres 报错 (SQLSTATE 21000)
+				if (newRes.ShiftType == "白班" || newRes.ShiftType == "夜班") && old.ShiftType == "异常" {
+					resultMap[key] = newRes
+				} else if old.ShiftType == "异常" && newRes.ShiftType == "异常" {
+					if newRes.FirstClock < old.FirstClock {
+						old.FirstClock = newRes.FirstClock
+					}
+					if newRes.LastClock > old.LastClock {
+						old.LastClock = newRes.LastClock
+					}
+					resultMap[key] = old
+				}
+			} else {
+				resultMap[key] = newRes
+			}
 		}
+	}
+
+	var resultsToSave []model.HkAttendanceResult
+	for _, v := range resultMap {
+		resultsToSave = append(resultsToSave, v)
 	}
 
 	if len(resultsToSave) > 0 {
