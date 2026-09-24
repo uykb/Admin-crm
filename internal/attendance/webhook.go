@@ -16,12 +16,9 @@ import (
 
 // HikEventPayload 海康事件推送结构（简化版）
 type HikEventPayload struct {
-	EventID   string `json:"eventId"`
-	EventType int    `json:"eventType"`
-	Data      struct {
-		PersonID  string `json:"personId"`
-		ClockTime string `json:"clockTime"` // 格式: "2006-01-02 15:04:05"
-	} `json:"data"`
+	EventID   string                 `json:"eventId"`
+	EventType int                    `json:"eventType"`
+	Data      map[string]interface{} `json:"data"` // 用 map 兼容海康各种字段命名差异
 }
 
 // HandleHikiotEvent 接收并处理海康打卡事件订阅推送
@@ -34,12 +31,38 @@ func HandleHikiotEvent(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if payload.Data.PersonID == "" || payload.Data.ClockTime == "" {
-			c.JSON(http.StatusOK, gin.H{"msg": "missing data"})
+		// 动态提取 personID
+		var personID string
+		if pid, ok := payload.Data["personId"].(string); ok && pid != "" {
+			personID = pid
+		} else if pno, ok := payload.Data["personNo"].(string); ok && pno != "" {
+			personID = pno
+		}
+
+		// 动态提取打卡时间
+		var clockTimeStr string
+		for _, key := range []string{"actionTime", "clockTime", "happenTime", "time"} {
+			if ct, ok := payload.Data[key].(string); ok && ct != "" {
+				clockTimeStr = ct
+				break
+			}
+		}
+
+		// 忽略无关或无效事件
+		if personID == "" || clockTimeStr == "" {
+			c.JSON(http.StatusOK, gin.H{"msg": "ignore non-punch event"})
 			return
 		}
 
-		punchTime, err := time.Parse("2006-01-02 15:04:05", payload.Data.ClockTime)
+		// 处理带 T 的时间格式或者普通格式
+		var punchTime time.Time
+		var err error
+		if len(clockTimeStr) > 10 && clockTimeStr[10] == 'T' {
+			punchTime, err = time.Parse("2006-01-02T15:04:05Z07:00", clockTimeStr) // ISO8601
+		} else {
+			punchTime, err = time.Parse("2006-01-02 15:04:05", clockTimeStr)
+		}
+		
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{"msg": "invalid clock_time format"})
 			return
@@ -53,7 +76,7 @@ func HandleHikiotEvent(db *gorm.DB) gin.HandlerFunc {
 			var snapshot model.AttDailySnapshot
 			
 			// 尝试查出现有记录
-			result := tx.Where("user_id = ? AND att_date = ?", payload.Data.PersonID, attDate).First(&snapshot)
+			result := tx.Where("user_id = ? AND att_date = ?", personID, attDate).First(&snapshot)
 			
 			var rawTimes []time.Time
 			if result.Error == nil {
@@ -78,7 +101,7 @@ func HandleHikiotEvent(db *gorm.DB) gin.HandlerFunc {
 			
 			// 构建 Upsert 数据
 			newSnapshot := model.AttDailySnapshot{
-				UserID:        payload.Data.PersonID,
+				UserID:        personID,
 				AttDate:       attDate,
 				FirstPunch:    &firstPunch,
 				LastPunch:     &lastPunch,
