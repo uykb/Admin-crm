@@ -246,6 +246,7 @@ type AttendanceRecordDTO struct {
 	DeviceName      string `json:"deviceName"`
 	Address         string `json:"address"`
 	VerifyMode      int    `json:"verifyMode"`
+	WayOfClock      string `json:"wayOfClock"`
 }
 
 // PageResponse 分页查询数据结构

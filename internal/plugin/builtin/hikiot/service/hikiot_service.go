@@ -236,13 +236,29 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 					}
 				}
 
+				// 智能映射验证方式
+				vMode := r.VerifyMode
+				if r.WayOfClock != "" {
+					if strings.Contains(r.WayOfClock, "脸") {
+						vMode = 1
+					} else if strings.Contains(r.WayOfClock, "卡") {
+						vMode = 2
+					} else if strings.Contains(r.WayOfClock, "指纹") {
+						vMode = 3
+					} else {
+						vMode = 1 // 默认人脸
+					}
+				} else if vMode == 0 {
+					vMode = 1 // 官方 API 如果不返回 int 的 verifyMode，默认当做人脸
+				}
+
 				item := hkmodel.HkAttendance{
 					PersonID:   pID,
 					PersonName: r.PersonName,
 					JobNo:      jNo,
 					ClockTime:  t,
 					DoorName:   devName,
-					VerifyMode: r.VerifyMode,
+					VerifyMode: vMode,
 				}
 				apiList = append(apiList, item)
 			}
