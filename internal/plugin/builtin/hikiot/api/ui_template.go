@@ -8,18 +8,19 @@ const HikUIHTML = `<!DOCTYPE html>
   <title>海康互联 (Hik-Connect) 门禁与考勤控制台</title>
   <!-- Element Plus CSS & Vue 3 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/theme-chalk/dark/css-vars.css" />
   <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@2.3.1/dist/index.iife.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; margin: 0; padding: 20px; color: #303133; }
-    .header-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); margin-bottom: 20px; }
-    .card-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--el-bg-color-page); margin: 0; padding: 20px; color: var(--el-text-color-primary); }
+    .header-box { background: var(--el-bg-color-overlay); padding: 20px; border-radius: 8px; box-shadow: var(--el-box-shadow-light); margin-bottom: 20px; }
+    .card-box { background: var(--el-bg-color-overlay); padding: 20px; border-radius: 8px; box-shadow: var(--el-box-shadow-light); }
     .door-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 15px; }
     .door-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .door-title { font-weight: 600; font-size: 16px; color: #111827; }
-    .door-code { font-size: 12px; color: #6b7280; font-family: monospace; }
-    .door-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid #f0f0f0; margin-top: 15px; }
+    .door-title { font-weight: 600; font-size: 16px; color: var(--el-text-color-primary); }
+    .door-code { font-size: 12px; color: var(--el-text-color-regular); font-family: monospace; }
+    .door-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); margin-top: 15px; }
     .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; }
     .el-table .cell { padding: 0 4px !important; }
   </style>
@@ -367,6 +368,25 @@ const HikUIHTML = `<!DOCTYPE html>
         };
 
         onMounted(() => {
+          const syncTheme = () => {
+            try {
+              if (window.parent && window.parent.document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+            } catch(e) {}
+          };
+          syncTheme();
+          try {
+            if (window.parent) {
+              const observer = new MutationObserver(syncTheme);
+              observer.observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ['class'] });
+            }
+          } catch(e) {
+            setInterval(syncTheme, 500);
+          }
+
           const path = window.location.pathname;
           if (path.includes('ui_records') || path.includes('records')) {
             activeTab.value = 'attendance';
