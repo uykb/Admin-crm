@@ -85,6 +85,10 @@ func (p *HikPlugin) ensureMenu(db *gorm.DB) {
 	var count int64
 	db.Model(&model.SysMenu{}).Where("name = ?", "门禁设备管控").Count(&count)
 	if count > 0 {
+		// 强制更新已有菜单的 Component 字段
+		db.Model(&model.SysMenu{}).Where("name = ?", "门禁设备管控").Update("component", "hikiot/ui_doors")
+		db.Model(&model.SysMenu{}).Where("name = ?", "打卡考勤记录").Update("component", "hikiot/ui_records")
+		db.Model(&model.SysMenu{}).Where("name = ?", "排班考勤汇总").Update("component", "hikiot/ui_matrix")
 		return // 已经是最新的菜单结构，跳过
 	}
 
@@ -105,7 +109,7 @@ func (p *HikPlugin) ensureMenu(db *gorm.DB) {
 	// 2. 门禁设备管控
 	child1 := model.SysMenu{
 		Name: "门禁设备管控", ParentID: dir.ID, Type: "C", Path: "doors",
-		Component: "hikiot/ui", Permission: "hikiot:door:list",
+		Component: "hikiot/ui_doors", Permission: "hikiot:door:list",
 		Icon: "Lock", Sort: 1, Visible: 1, Status: 1,
 	}
 	db.Create(&child1)
@@ -113,7 +117,7 @@ func (p *HikPlugin) ensureMenu(db *gorm.DB) {
 	// 3. 打卡考勤记录
 	child2 := model.SysMenu{
 		Name: "打卡考勤记录", ParentID: dir.ID, Type: "C", Path: "records",
-		Component: "hikiot/ui", Permission: "hikiot:attendance:list",
+		Component: "hikiot/ui_records", Permission: "hikiot:attendance:list",
 		Icon: "Clock", Sort: 2, Visible: 1, Status: 1,
 	}
 	db.Create(&child2)
@@ -121,7 +125,7 @@ func (p *HikPlugin) ensureMenu(db *gorm.DB) {
 	// 4. 排班考勤汇总
 	child3 := model.SysMenu{
 		Name: "排班考勤汇总", ParentID: dir.ID, Type: "C", Path: "matrix",
-		Component: "hikiot/ui", Permission: "hikiot:matrix:list",
+		Component: "hikiot/ui_matrix", Permission: "hikiot:matrix:list",
 		Icon: "DataBoard", Sort: 3, Visible: 1, Status: 1,
 	}
 	db.Create(&child3)
