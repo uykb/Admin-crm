@@ -14,35 +14,39 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// HikEventPayload 海康事件推送结构（简化版）
-type HikEventPayload struct {
-	EventID   string                 `json:"eventId"`
-	EventType int                    `json:"eventType"`
-	Data      map[string]interface{} `json:"data"` // 用 map 兼容海康各种字段命名差异
-}
-
 // HandleHikiotEvent 接收并处理海康打卡事件订阅推送
 // 这是 Push(实时) 模式的入口，实时更新当天的考勤快照。
 func HandleHikiotEvent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var payload HikEventPayload
-		if err := c.ShouldBindJSON(&payload); err != nil {
+		var rawPayload map[string]interface{}
+		if err := c.ShouldBindJSON(&rawPayload); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "invalid payload"})
 			return
 		}
 
+		// 提取真正包含事件数据的对象（兼容 eventInfo, data 或平铺格式）
+		var dataMap map[string]interface{}
+		if ei, ok := rawPayload["eventInfo"].(map[string]interface{}); ok {
+			dataMap = ei
+		} else if dt, ok := rawPayload["data"].(map[string]interface{}); ok {
+			dataMap = dt
+		} else {
+			dataMap = rawPayload
+		}
+
 		// 动态提取 personID
 		var personID string
-		if pid, ok := payload.Data["personId"].(string); ok && pid != "" {
-			personID = pid
-		} else if pno, ok := payload.Data["personNo"].(string); ok && pno != "" {
-			personID = pno
+		for _, key := range []string{"personNo", "employeeNo", "personId"} {
+			if val, ok := dataMap[key].(string); ok && val != "" {
+				personID = val
+				break
+			}
 		}
 
 		// 动态提取打卡时间
 		var clockTimeStr string
-		for _, key := range []string{"actionTime", "clockTime", "happenTime", "time"} {
-			if ct, ok := payload.Data[key].(string); ok && ct != "" {
+		for _, key := range []string{"gmtCreate", "actionTime", "clockTime", "happenTime", "time"} {
+			if ct, ok := dataMap[key].(string); ok && ct != "" {
 				clockTimeStr = ct
 				break
 			}
