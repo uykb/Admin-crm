@@ -202,7 +202,7 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 		sTime := startDate
 		eTime := endDate
 		if sTime == "" {
-			sTime = time.Now().AddDate(0, 0, -7).Format("2006-01-02 00:00:00")
+			sTime = time.Now().Format("2006-01-02 00:00:00") // 默认只查今天，节省 API 额度
 		}
 		if eTime == "" {
 			eTime = time.Now().Format("2006-01-02 23:59:59")

@@ -8,9 +8,16 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+var (
+	cachedAppToken    string
+	cachedAppTokenExp time.Time
+	tokenMutex        sync.RWMutex
 )
 
 // Client 海康开放平台 API 客户端
@@ -56,7 +63,15 @@ func (c *Client) DoRequest(method, path string, bodyData interface{}, result int
 
 	// 自动换取 AppAccessToken（非 exchangeAppToken 接口）
 	if c.AppAccessToken == "" && !strings.Contains(path, "exchangeAppToken") {
-		_, _ = c.ExchangeAppToken()
+		tokenMutex.RLock()
+		if cachedAppToken != "" && time.Now().Before(cachedAppTokenExp) {
+			c.AppAccessToken = cachedAppToken
+		}
+		tokenMutex.RUnlock()
+
+		if c.AppAccessToken == "" {
+			_, _ = c.ExchangeAppToken()
+		}
 	}
 
 	urlStr := c.BaseURL + path
@@ -423,7 +438,7 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 	}
 
 	var allRecords []AttendanceRecordDTO
-	pageSize := 100
+	pageSize := 1000 // Increased from 100 to reduce API calls
 	page := 1
 
 	for {
@@ -513,6 +528,15 @@ func (c *Client) ExchangeAppToken() (*AppTokenData, error) {
 
 	if resp.Data.AppAccessToken != "" {
 		c.AppAccessToken = resp.Data.AppAccessToken
+		tokenMutex.Lock()
+		cachedAppToken = c.AppAccessToken
+		// Assuming ExpiresIn is in seconds. Expire 5 minutes early to be safe.
+		if resp.Data.ExpiresIn > 300 {
+			cachedAppTokenExp = time.Now().Add(time.Duration(resp.Data.ExpiresIn-300) * time.Second)
+		} else {
+			cachedAppTokenExp = time.Now().Add(12 * time.Hour) // Fallback to 12 hours
+		}
+		tokenMutex.Unlock()
 	}
 
 	return &resp.Data, nil
