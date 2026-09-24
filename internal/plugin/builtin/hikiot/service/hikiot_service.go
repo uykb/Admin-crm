@@ -357,7 +357,7 @@ func (s *HikService) SyncPersons() (int, error) {
 					JobNo:        dto.GetJobNo(),
 					PhoneNo:      dto.GetPhone(),
 					OrgIndexCode: orgCode,
-					OrgName:      dto.OrgName,
+					OrgName:      dto.GetOrgName(),
 				}
 				_ = s.db.Clauses(clause.OnConflict{
 					Columns:   []clause.Column{{Name: "person_id"}},

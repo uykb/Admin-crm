@@ -89,17 +89,19 @@ func (o *OrgDTO) GetParentCode() string {
 
 // PersonDTO 海康人员数据结构
 type PersonDTO struct {
-	PersonID     string `json:"personId"`
-	PersonNo     string `json:"personNo"`
-	PersonName   string `json:"personName"`
-	JobNo        string `json:"jobNo"`
-	JobNumber    string `json:"jobNumber"`
-	PhoneNo      string `json:"phoneNo"`
-	OrgIndexCode string `json:"orgIndexCode"`
-	OrgName      string `json:"orgName"`
-	DepartNo     string `json:"departNo"`
-	Name         string `json:"name"`
-	Phone        string `json:"phone"`
+	PersonID       string `json:"personId"`
+	PersonNo       string `json:"personNo"`
+	PersonName     string `json:"personName"`
+	JobNo          string `json:"jobNo"`
+	JobNumber      string `json:"jobNumber"`
+	PhoneNo        string `json:"phoneNo"`
+	OrgIndexCode   string `json:"orgIndexCode"`
+	OrgName        string `json:"orgName"`
+	DepartNo       string `json:"departNo"`
+	DepartmentNo   string `json:"departmentNo"`
+	DepartmentName string `json:"departmentName"`
+	Name           string `json:"name"`
+	Phone          string `json:"phone"`
 }
 
 func (p *PersonDTO) GetID() string {
@@ -134,10 +136,20 @@ func (p *PersonDTO) GetJobNo() string {
 }
 
 func (p *PersonDTO) GetOrgCode() string {
+	if p.DepartmentNo != "" {
+		return p.DepartmentNo
+	}
 	if p.DepartNo != "" {
 		return p.DepartNo
 	}
 	return p.OrgIndexCode
+}
+
+func (p *PersonDTO) GetOrgName() string {
+	if p.DepartmentName != "" {
+		return p.DepartmentName
+	}
+	return p.OrgName
 }
 
 // DoorDTO 海康门禁点结构（兼容设备通道/资源点所有变体字段）
