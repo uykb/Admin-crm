@@ -464,6 +464,7 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 			"size":                  pageSize,
 			"pageSize":              pageSize,
 			"containsDeletedPerson": true,
+			"departNos":             []string{"BM54141022"}, // 筛选特定部门
 		}
 
 		var resp BaseResponse

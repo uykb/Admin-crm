@@ -273,7 +273,7 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 	// 2. 备用方案：API 未配置或拉取失败时，退回到数据库查询已有历史记录
 	var list []hkmodel.HkAttendance
 	query := s.db.Model(&hkmodel.HkAttendance{}).
-		Where("person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", "BM54141022")
+		Where("person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ?)", "BM54141022")
 
 	if personName != "" {
 		query = query.Where("person_name LIKE ?", "%"+personName+"%")
@@ -378,7 +378,7 @@ func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
 
 	var list []hkmodel.HkPerson
 	query := s.db.Model(&hkmodel.HkPerson{}).
-		Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022")
+		Where("org_index_code = ?", "BM54141022")
 
 	if keyword != "" {
 		query = query.Where("person_name LIKE ? OR job_no LIKE ? OR phone_no LIKE ?",
@@ -387,7 +387,7 @@ func (s *HikService) SearchPerson(keyword string) ([]hkmodel.HkPerson, error) {
 	err := query.Find(&list).Error
 	if len(list) == 0 && keyword == "" {
 		_, _ = s.SyncPersons()
-		s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&list)
+		s.db.Where("org_index_code = ?", "BM54141022").Find(&list)
 	}
 	if list == nil {
 		list = []hkmodel.HkPerson{}

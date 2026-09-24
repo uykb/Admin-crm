@@ -24,7 +24,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	
 	// 获取部门人员
 	var allPersons []model.HkPerson
-	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&allPersons)
+	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
 
 	normalMap := make(map[string]bool)
 	for _, r := range existingResults {
@@ -140,14 +140,14 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	if len(rawRecords) == 0 {
 		queryStart := monthStart.AddDate(0, 0, -1)
 		queryEnd := monthStart.AddDate(0, 1, 2)
-		_ = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", queryStart, queryEnd, "BM54141022").
+		_ = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ?)", queryStart, queryEnd, "BM54141022").
 			Order("person_id ASC, clock_time ASC").
 			Find(&rawRecords).Error
 	}
 
 	// 限制为 BM54141022 部门范围
 	var bmPersons []model.HkPerson
-	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&bmPersons)
+	s.db.Where("org_index_code = ?", "BM54141022").Find(&bmPersons)
 	bmMap := make(map[string]bool)
 	for _, p := range bmPersons {
 		bmMap[p.PersonID] = true
@@ -187,7 +187,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 
 	// 仅获取 BM54141022 部门人员
 	var allPersons []model.HkPerson
-	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&allPersons)
+	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
 	for _, p := range allPersons {
 		if _, ok := personNames[p.PersonID]; !ok {
 			personNames[p.PersonID] = p.PersonName
@@ -386,7 +386,7 @@ type MatrixRow struct {
 // GetMonthlyAttendanceMatrix 获取月度矩阵视图数据（仅针对 BM54141022 部门）
 func (s *HikService) GetMonthlyAttendanceMatrix(monthStr string) ([]MatrixRow, error) {
 	var allPersons []model.HkPerson
-	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&allPersons)
+	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
 
 	validPersonIDs := make(map[string]bool)
 	rowMap := make(map[string]*MatrixRow)
