@@ -313,7 +313,7 @@ const HikUIHTML = `<!DOCTYPE html>
 
         const handleTabChange = (tabName) => {
           if (tabName === 'doors') loadDoors();
-          if (tabName === 'attendance') loadAttendance();
+          // if (tabName === 'attendance') loadAttendance(); // 用户要求点击查询再拉取
           if (tabName === 'persons') loadPersons();
         };
 
