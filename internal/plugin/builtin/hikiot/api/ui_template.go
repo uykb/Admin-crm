@@ -137,10 +137,6 @@ const HikUIHTML = `<!DOCTYPE html>
         <el-table :data="matrixData" stripe v-loading="loadingMatrix" style="width: 100%;" border>
           <template #empty><el-empty description="暂无排班数据，请点击一键智能判定"></el-empty></template>
           <el-table-column prop="person_name" label="姓名" width="90" fixed="left"></el-table-column>
-          <el-table-column prop="job_no" label="工号" width="100" fixed="left"></el-table-column>
-          <el-table-column label="考勤规则" width="90" fixed="left">
-             <template #default>排班打卡</template>
-          </el-table-column>
           
           <el-table-column v-for="day in daysInMonth" :key="day.num" width="55" align="center">
             <template #header>
