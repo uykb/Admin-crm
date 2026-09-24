@@ -68,7 +68,10 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		// 仅针对异常的日期去向海康 API 发起精准请求（大幅节省接口调用量）
 		for dateStr := range abnormalDates {
 			sTime := dateStr
-			eTime := dateStr
+			// 对于异常的当天，必须把下一天的数据也拉过来，防止“夜班”跨天导致的缺卡误判
+			tDate, _ := time.Parse("2006-01-02", dateStr)
+			eTime := tDate.AddDate(0, 0, 1).Format("2006-01-02")
+			
 			records, errRec := cli.GetAttendanceRecords(sTime, eTime)
 			if errRec == nil && len(records) > 0 {
 				for _, r := range records {
