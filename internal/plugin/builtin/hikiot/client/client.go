@@ -438,7 +438,7 @@ func (c *Client) GetAttendanceRecords(startTime, endTime string) ([]AttendanceRe
 	}
 
 	var allRecords []AttendanceRecordDTO
-	pageSize := 1000 // Increased from 100 to reduce API calls
+	pageSize := 100 // Must not exceed 100 according to Hik-Connect docs
 	page := 1
 
 	for {
