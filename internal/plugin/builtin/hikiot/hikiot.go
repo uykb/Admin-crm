@@ -8,11 +8,13 @@ import (
 	"apeadmin-gin/internal/dal"
 	"apeadmin-gin/internal/model"
 	"apeadmin-gin/internal/plugin"
+	"apeadmin-gin/internal/attendance"
 	hikapi "apeadmin-gin/internal/plugin/builtin/hikiot/api"
 	hikmcp "apeadmin-gin/internal/plugin/builtin/hikiot/mcp"
 	hikmodel "apeadmin-gin/internal/plugin/builtin/hikiot/model"
 	hikservice "apeadmin-gin/internal/plugin/builtin/hikiot/service"
 
+	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
 
@@ -152,9 +154,30 @@ func (p *HikPlugin) Register(pr *plugin.PluginRouter) error {
 	if pr.Public != nil {
 		handler := hikapi.NewHikHandler(pr.DB)
 		pr.Public.GET("/hikiot/test-persons", handler.TestPersons)
+		// 暴露海康 Event 推送接收端（公有路由）
+		pr.Public.POST("/hikiot/event/callback", attendance.HandleHikiotEvent(pr.DB))
 	}
 
-	// 3. 注册 AI Agent MCP 工具
+	// 3. 注册定时任务：每天上午 09:00 执行一次错峰查漏补缺
+	c := cron.New()
+	_, err := c.AddFunc("0 9 * * *", func() {
+		// 每次执行时都获取最新的 client
+		svc := hikservice.NewHikService(pr.DB)
+		cli, err := svc.GetClient()
+		if err == nil {
+			_ = attendance.DailyReconciliation(pr.DB, cli)
+		} else {
+			log.Printf("[Plugin:hikiot] 获取 API Client 失败，无法执行 DailyReconciliation: %v", err)
+		}
+	})
+	if err != nil {
+		log.Printf("[Plugin:hikiot] 注册考勤 Cron 任务失败: %v", err)
+	} else {
+		c.Start()
+		log.Println("[Plugin:hikiot] 已启动考勤定时任务，每天 09:00 执行核算")
+	}
+
+	// 4. 注册 AI Agent MCP 工具
 	if pr.MCP != nil {
 		hikmcp.RegisterTools(pr.MCP, pr.DB)
 	}

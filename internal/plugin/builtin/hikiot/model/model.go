@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"apeadmin-gin/internal/model"
+)
 
 // HkOrg 海康组织结构实体
 type HkOrg struct {
@@ -92,5 +96,6 @@ func AllModels() []interface{} {
 		&HkDoor{},
 		&HkAttendance{},
 		&HkAttendanceResult{},
+		&model.AttDailySnapshot{}, // 从 core model 引入
 	}
 }
