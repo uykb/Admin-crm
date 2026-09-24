@@ -18,58 +18,116 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		return fmt.Errorf("月份格式错误，应为 YYYY-MM")
 	}
 
-	// 1. 实时获取海康云端当月原始打卡记录（纯内存处理，不写入数据库）
-	var rawRecords []model.HkAttendance
+	// 1. 找出当月存在的异常或缺失日期（截至今天）
+	var existingResults []model.HkAttendanceResult
+	s.db.Where("date LIKE ?", monthStr+"%").Find(&existingResults)
+	
+	// 获取部门人员
+	var allPersons []model.HkPerson
+	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&allPersons)
 
-	cli, errCli := s.GetClient()
-	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
-		// 覆盖区间：当月1号 到 下个月2号
-		sTime := monthStart.Format("2006-01-02 00:00:00")
-		eTime := monthStart.AddDate(0, 1, 2).Format("2006-01-02 23:59:59")
-
-		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
-		if errRec == nil && len(records) > 0 {
-			toCreateMap := make(map[string]model.HkAttendance)
-			for _, r := range records {
-				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
-				if t.IsZero() {
-					t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
-				}
-				if t.IsZero() {
-					continue
-				}
-
-				pID := r.PersonNo
-				if pID == "" {
-					pID = r.PersonID
-				}
-				jNo := r.JobNumber
-				if jNo == "" {
-					jNo = r.JobNo
-				}
-				devName := r.DeviceName
-				if devName == "" {
-					devName = r.Address
-				}
-
-				key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
-				toCreateMap[key] = model.HkAttendance{
-					PersonID:   pID,
-					PersonName: r.PersonName,
-					JobNo:      jNo,
-					ClockTime:  t,
-					DoorName:   devName,
-					VerifyMode: r.VerifyMode,
-				}
-			}
-			for _, v := range toCreateMap {
-				rawRecords = append(rawRecords, v)
-			}
-			// 按时间升序排序
-			sort.Slice(rawRecords, func(i, j int) bool {
-				return rawRecords[i].ClockTime.Before(rawRecords[j].ClockTime)
-			})
+	normalMap := make(map[string]bool)
+	for _, r := range existingResults {
+		if r.ShiftType != "异常" && r.ShiftType != "缺卡" && r.ShiftType != "空白" && r.ShiftType != "" {
+			normalMap[r.PersonID+"_"+r.Date] = true
 		}
+	}
+
+	abnormalDates := make(map[string]bool)
+	todayStr := time.Now().Format("2006-01-02")
+	
+	// 遍历当月每一天直到今天，检查是否有人考勤异常
+	for d := 1; d <= 31; d++ {
+		dateStr := fmt.Sprintf("%s-%02d", monthStr, d)
+		if dateStr > todayStr {
+			break
+		}
+		// 校验该日期是否有效
+		if _, err := time.Parse("2006-01-02", dateStr); err != nil {
+			continue
+		}
+		
+		isAbnormal := false
+		for _, p := range allPersons {
+			if !normalMap[p.PersonID+"_"+dateStr] {
+				isAbnormal = true
+				break
+			}
+		}
+		if isAbnormal {
+			abnormalDates[dateStr] = true
+		}
+	}
+
+	var rawRecords []model.HkAttendance
+	cli, errCli := s.GetClient()
+	
+	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
+		toCreateMap := make(map[string]model.HkAttendance)
+		
+		// 仅针对异常的日期去向海康 API 发起精准请求（大幅节省接口调用量）
+		for dateStr := range abnormalDates {
+			sTime := dateStr
+			eTime := dateStr
+			records, errRec := cli.GetAttendanceRecords(sTime, eTime)
+			if errRec == nil && len(records) > 0 {
+				for _, r := range records {
+					t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
+					if t.IsZero() {
+						t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
+					}
+					if t.IsZero() {
+						continue
+					}
+					pID := r.PersonNo
+					if pID == "" {
+						pID = r.PersonID
+					}
+					jNo := r.JobNumber
+					if jNo == "" {
+						jNo = r.JobNo
+					}
+					devName := r.DeviceName
+					if devName == "" {
+						devName = r.Address
+					}
+					
+					// 智能映射验证方式
+					vMode := r.VerifyMode
+					if r.WayOfClock != "" {
+						if strings.Contains(r.WayOfClock, "脸") {
+							vMode = 1
+						} else if strings.Contains(r.WayOfClock, "卡") {
+							vMode = 2
+						} else if strings.Contains(r.WayOfClock, "指纹") {
+							vMode = 3
+						} else {
+							vMode = 1
+						}
+					} else if vMode == 0 {
+						vMode = 1
+					}
+
+					key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
+					toCreateMap[key] = model.HkAttendance{
+						PersonID:   pID,
+						PersonName: r.PersonName,
+						JobNo:      jNo,
+						ClockTime:  t,
+						DoorName:   devName,
+						VerifyMode: vMode,
+					}
+				}
+			}
+		}
+		
+		for _, v := range toCreateMap {
+			rawRecords = append(rawRecords, v)
+		}
+		// 按时间升序排序
+		sort.Slice(rawRecords, func(i, j int) bool {
+			return rawRecords[i].ClockTime.Before(rawRecords[j].ClockTime)
+		})
 
 		// 确保人员信息也是最新的
 		_, _ = s.SyncPersons()
@@ -258,6 +316,42 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 				}
 			} else {
 				resultMap[key] = newRes
+			}
+		}
+	}
+
+	// 补齐没有任何打卡记录的历史天数，自动置为“休息”，防止下次继续当做异常请求API
+	todayStrLimit := time.Now().Format("2006-01-02")
+	for _, p := range allPersons {
+		for d := 1; d <= 31; d++ {
+			dateStr := fmt.Sprintf("%s-%02d", monthStr, d)
+			if dateStr >= todayStrLimit {
+				break
+			}
+			if _, err := time.Parse("2006-01-02", dateStr); err != nil {
+				continue
+			}
+			key := fmt.Sprintf("%s_%s", p.PersonID, dateStr)
+			if _, exists := resultMap[key]; !exists {
+				// 检查原来是否已经有手工记录或正常记录
+				hasNormal := false
+				for _, er := range existingResults {
+					if er.PersonID == p.PersonID && er.Date == dateStr && (er.IsManual || er.ShiftType == "请假" || er.ShiftType == "休息") {
+						hasNormal = true
+						break
+					}
+				}
+				if !hasNormal {
+					resultMap[key] = model.HkAttendanceResult{
+						PersonID:   p.PersonID,
+						PersonName: p.PersonName,
+						JobNo:      p.JobNo,
+						Date:       dateStr,
+						ShiftType:  "休息", // 标记为休息，停止对该日期的 API 轮询
+						IsManual:   false,
+						Remark:     "智能判定无打卡",
+					}
+				}
 			}
 		}
 	}
