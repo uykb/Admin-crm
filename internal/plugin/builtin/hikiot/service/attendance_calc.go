@@ -4,6 +4,7 @@ import (
 	"apeadmin-gin/internal/plugin/builtin/hikiot/model"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -161,8 +162,6 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	}
 
 	// 查出已被人工修改过的记录
-	var existingResults []model.HkAttendanceResult
-	s.db.Where("date LIKE ?", monthStr+"%").Find(&existingResults)
 	manualMap := make(map[string]bool)
 	for _, r := range existingResults {
 		if r.IsManual {
@@ -186,8 +185,6 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	}
 
 	// 仅获取 BM54141022 部门人员
-	var allPersons []model.HkPerson
-	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
 	for _, p := range allPersons {
 		if _, ok := personNames[p.PersonID]; !ok {
 			personNames[p.PersonID] = p.PersonName
