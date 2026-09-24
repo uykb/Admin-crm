@@ -329,7 +329,7 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 		// 如果失败，尝试分页查询设备列表接口
 		err = c.DoRequest("GET", "/device/v1/page", map[string]interface{}{
 			"page": 1,
-			"size": 500,
+			"size": 50, // max 50 according to API docs
 		}, &resp)
 	}
 
@@ -398,12 +398,26 @@ func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	
 	err := c.DoRequest("GET", "/issue/v1/device/openDoor", params, &resp)
 	if err != nil {
-		// 降级尝试旧版 POST 接口
+		// 降级尝试底层设备控制 POST 接口
+		cmdStr := "open"
+		if command == 0 {
+			cmdStr = "close"
+		} else if command == 2 {
+			cmdStr = "alwaysOpen"
+		} else if command == 3 {
+			cmdStr = "alwaysClose"
+		}
+		
 		errV1 := c.DoRequest("POST", "/device/direct/v1/doorControl/remoteControlDoor", map[string]interface{}{
 			"deviceSerial": deviceSerial,
-			"doorNo":       1,
-			"cmd":          command,
+			"payload": map[string]interface{}{
+				"cmd":         cmdStr,
+				"doorNo":      1,
+				"channelNo":   1,
+				"controlType": "monitor",
+			},
 		}, &resp)
+		
 		if errV1 != nil {
 			return err
 		}
@@ -530,9 +544,9 @@ func (c *Client) ExchangeAppToken() (*AppTokenData, error) {
 		c.AppAccessToken = resp.Data.AppAccessToken
 		tokenMutex.Lock()
 		cachedAppToken = c.AppAccessToken
-		// Assuming ExpiresIn is in seconds. Expire 5 minutes early to be safe.
-		if resp.Data.ExpiresIn > 300 {
-			cachedAppTokenExp = time.Now().Add(time.Duration(resp.Data.ExpiresIn-300) * time.Second)
+		// ExpiresIn is in hours according to official docs (e.g., 24).
+		if resp.Data.ExpiresIn > 0 {
+			cachedAppTokenExp = time.Now().Add(time.Duration(resp.Data.ExpiresIn) * time.Hour).Add(-5 * time.Minute)
 		} else {
 			cachedAppTokenExp = time.Now().Add(12 * time.Hour) // Fallback to 12 hours
 		}
