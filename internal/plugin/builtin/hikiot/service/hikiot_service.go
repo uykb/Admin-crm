@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"apeadmin-gin/internal/model"
@@ -192,11 +194,67 @@ func (s *HikService) ControlDoor(doorIndexCode string, command int) error {
 	return nil
 }
 
-// QueryAttendance 查询落库考勤记录（纯真实数据）
+// QueryAttendance 实时按条件查询考勤记录（优先按条件调 API 直拉，不写库；API 无响应时备用查本地表）
 func (s *HikService) QueryAttendance(personName string, startDate, endDate string) ([]hkmodel.HkAttendance, error) {
-	// 清理历史 Mock 沙箱数据
-	s.db.Exec("DELETE FROM hk_attendance WHERE person_id LIKE 'P800%'")
+	// 1. 优先尝试从海康开放平台 API 实时拉取
+	cli, errCli := s.GetClient()
+	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
+		sTime := startDate
+		eTime := endDate
+		if sTime == "" {
+			sTime = time.Now().AddDate(0, 0, -7).Format("2006-01-02 00:00:00")
+		}
+		if eTime == "" {
+			eTime = time.Now().Format("2006-01-02 23:59:59")
+		}
+		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
+		if errRec == nil {
+			var apiList []hkmodel.HkAttendance
+			for _, r := range records {
+				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
+				if t.IsZero() {
+					t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
+				}
 
+				pID := r.PersonNo
+				if pID == "" {
+					pID = r.PersonID
+				}
+				jNo := r.JobNumber
+				if jNo == "" {
+					jNo = r.JobNo
+				}
+				devName := r.DeviceName
+				if devName == "" {
+					devName = r.Address
+				}
+
+				// 内存按姓名/工号条件过滤
+				if personName != "" {
+					if !strings.Contains(r.PersonName, personName) && !strings.Contains(jNo, personName) {
+						continue
+					}
+				}
+
+				item := hkmodel.HkAttendance{
+					PersonID:   pID,
+					PersonName: r.PersonName,
+					JobNo:      jNo,
+					ClockTime:  t,
+					DoorName:   devName,
+					VerifyMode: r.VerifyMode,
+				}
+				apiList = append(apiList, item)
+			}
+			// 按时间倒序
+			sort.Slice(apiList, func(i, j int) bool {
+				return apiList[i].ClockTime.After(apiList[j].ClockTime)
+			})
+			return apiList, nil
+		}
+	}
+
+	// 2. 备用方案：API 未配置或拉取失败时，退回到数据库查询已有历史记录
 	var list []hkmodel.HkAttendance
 	query := s.db.Model(&hkmodel.HkAttendance{}).
 		Where("person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", "BM54141022")
@@ -218,54 +276,6 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 	}
 
 	err := query.Order("clock_time DESC").Limit(2000).Find(&list).Error
-
-	// 尝试自动同步真实考勤记录
-	cli, errCli := s.GetClient()
-	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
-		sTime := startDate
-		eTime := endDate
-		if sTime == "" {
-			sTime = time.Now().AddDate(0, 0, -7).Format("2006-01-02 00:00:00")
-		}
-		if eTime == "" {
-			eTime = time.Now().Format("2006-01-02 23:59:59")
-		}
-		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
-		if errRec == nil && len(records) > 0 {
-			for _, r := range records {
-				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
-				if t.IsZero() {
-					t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
-				}
-
-				pID := r.PersonNo
-				if pID == "" {
-					pID = r.PersonID
-				}
-				jNo := r.JobNumber
-				if jNo == "" {
-					jNo = r.JobNo
-				}
-				devName := r.DeviceName
-				if devName == "" {
-					devName = r.Address
-				}
-
-				item := hkmodel.HkAttendance{
-					PersonID:   pID,
-					PersonName: r.PersonName,
-					JobNo:      jNo,
-					ClockTime:  t,
-					DoorName:   devName,
-					VerifyMode: r.VerifyMode,
-				}
-				s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&item)
-			}
-			query.Order("clock_time DESC").Limit(2000).Find(&list)
-			return list, nil
-		}
-	}
-
 	if list == nil {
 		list = []hkmodel.HkAttendance{}
 	}

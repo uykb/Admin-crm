@@ -18,7 +18,9 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		return fmt.Errorf("月份格式错误，应为 YYYY-MM")
 	}
 
-	// 1. 自动同步海康云端当月的全量打卡记录
+	// 1. 实时获取海康云端当月原始打卡记录（纯内存处理，不写入数据库）
+	var rawRecords []model.HkAttendance
+
 	cli, errCli := s.GetClient()
 	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
 		// 覆盖区间：当月1号 到 下个月2号
@@ -60,29 +62,41 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 					VerifyMode: r.VerifyMode,
 				}
 			}
-			var toCreate []model.HkAttendance
 			for _, v := range toCreateMap {
-				toCreate = append(toCreate, v)
+				rawRecords = append(rawRecords, v)
 			}
-			if len(toCreate) > 0 {
-				s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&toCreate)
-			}
+			// 按时间升序排序
+			sort.Slice(rawRecords, func(i, j int) bool {
+				return rawRecords[i].ClockTime.Before(rawRecords[j].ClockTime)
+			})
 		}
 
 		// 确保人员信息也是最新的
 		_, _ = s.SyncPersons()
 	}
 
-	// 2. 从本地数据库拉取当月全量考勤流水（只针对 BM54141022 部门）
-	queryStart := monthStart.AddDate(0, 0, -1)
-	queryEnd := monthStart.AddDate(0, 1, 2)
+	// 2. 备用方案：如果 API 无数据，退回到从本地数据库拉取历史全量考勤流水（兼容离线模式）
+	if len(rawRecords) == 0 {
+		queryStart := monthStart.AddDate(0, 0, -1)
+		queryEnd := monthStart.AddDate(0, 1, 2)
+		_ = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", queryStart, queryEnd, "BM54141022").
+			Order("person_id ASC, clock_time ASC").
+			Find(&rawRecords).Error
+	}
+
+	// 限制为 BM54141022 部门范围
+	var bmPersons []model.HkPerson
+	s.db.Where("org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL", "BM54141022").Find(&bmPersons)
+	bmMap := make(map[string]bool)
+	for _, p := range bmPersons {
+		bmMap[p.PersonID] = true
+	}
 
 	var records []model.HkAttendance
-	err = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ? OR org_index_code = '' OR org_index_code IS NULL)", queryStart, queryEnd, "BM54141022").
-		Order("person_id ASC, clock_time ASC").
-		Find(&records).Error
-	if err != nil {
-		return err
+	for _, r := range rawRecords {
+		if len(bmMap) == 0 || bmMap[r.PersonID] {
+			records = append(records, r)
+		}
 	}
 
 	// 查出已被人工修改过的记录
