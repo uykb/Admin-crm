@@ -83,55 +83,75 @@ func (p *HikPlugin) ensureMenu(db *gorm.DB) {
 		return
 	}
 	var count int64
-	db.Model(&model.SysMenu{}).Where("permission = ?", "hikiot:door:list").Count(&count)
+	db.Model(&model.SysMenu{}).Where("name = ?", "门禁设备管控").Count(&count)
 	if count > 0 {
-		return
+		return // 已经是最新的菜单结构，跳过
 	}
 
-	// 1. 海康互联 顶级目录 (M)
-	dir := model.SysMenu{
-		Name: "海康互联", ParentID: 0, Type: "M", Path: "/hikiot",
-		Icon: "VideoCamera", Sort: 5, Visible: 1, Status: 1,
-	}
-	if err := db.Create(&dir).Error; err != nil {
-		log.Printf("[Plugin:hikiot] 创建顶级菜单失败: %v", err)
-		return
+	// 0. 清理旧版统一控制台菜单
+	db.Where("name = ?", "门禁考勤控制台").Delete(&model.SysMenu{})
+
+	// 1. 获取或创建 海康互联 顶级目录 (M)
+	var dir model.SysMenu
+	err := db.Where("name = ? AND parent_id = 0", "海康互联").First(&dir).Error
+	if err != nil {
+		dir = model.SysMenu{
+			Name: "海康互联", ParentID: 0, Type: "M", Path: "/hikiot",
+			Icon: "VideoCamera", Sort: 5, Visible: 1, Status: 1,
+		}
+		db.Create(&dir)
 	}
 
-	// 2. 管控中心 子菜单 (C)
-	child := model.SysMenu{
-		Name: "门禁考勤控制台", ParentID: dir.ID, Type: "C", Path: "ui",
+	// 2. 门禁设备管控
+	child1 := model.SysMenu{
+		Name: "门禁设备管控", ParentID: dir.ID, Type: "C", Path: "doors",
 		Component: "hikiot/ui", Permission: "hikiot:door:list",
-		Icon: "Key", Sort: 1, Visible: 1, Status: 1,
+		Icon: "Lock", Sort: 1, Visible: 1, Status: 1,
 	}
-	if err := db.Create(&child).Error; err != nil {
-		log.Printf("[Plugin:hikiot] 创建子菜单失败: %v", err)
-		return
-	}
+	db.Create(&child1)
 
-	// 3. 按钮权限 (F)
+	// 3. 打卡考勤记录
+	child2 := model.SysMenu{
+		Name: "打卡考勤记录", ParentID: dir.ID, Type: "C", Path: "records",
+		Component: "hikiot/ui", Permission: "hikiot:attendance:list",
+		Icon: "Clock", Sort: 2, Visible: 1, Status: 1,
+	}
+	db.Create(&child2)
+
+	// 4. 排班考勤汇总
+	child3 := model.SysMenu{
+		Name: "排班考勤汇总", ParentID: dir.ID, Type: "C", Path: "matrix",
+		Component: "hikiot/ui", Permission: "hikiot:matrix:list",
+		Icon: "DataBoard", Sort: 3, Visible: 1, Status: 1,
+	}
+	db.Create(&child3)
+
+	// 5. 按钮权限 (F)
 	btns := []model.SysMenu{
-		{Name: "控门操作", ParentID: child.ID, Type: "F", Permission: "hikiot:door:control", Sort: 1, Status: 1},
-		{Name: "考勤查看", ParentID: child.ID, Type: "F", Permission: "hikiot:attendance:list", Sort: 2, Status: 1},
-		{Name: "配置管理", ParentID: child.ID, Type: "F", Permission: "hikiot:config:edit", Sort: 3, Status: 1},
+		{Name: "控门操作", ParentID: child1.ID, Type: "F", Permission: "hikiot:door:control", Sort: 1, Status: 1},
+		{Name: "配置管理", ParentID: child1.ID, Type: "F", Permission: "hikiot:config:edit", Sort: 2, Status: 1},
 	}
 	for _, b := range btns {
-		_ = db.Create(&b).Error
+		db.Create(&b)
 	}
 
-	// 4. 超管角色绑定
+	// 6. 超管角色绑定
 	var adminRole model.SysRole
 	if err := db.Where("code = ?", "admin").First(&adminRole).Error; err == nil {
 		var menus []model.SysMenu
 		db.Model(&adminRole).Association("Menus").Find(&menus)
-		menus = append(menus, dir, child)
+		menus = append(menus, child1, child2, child3)
 		for _, b := range btns {
 			menus = append(menus, b)
+		}
+		// 如果 dir 也是新的，追加进去
+		if err != nil {
+			menus = append(menus, dir)
 		}
 		_ = db.Model(&adminRole).Association("Menus").Replace(&menus)
 	}
 
-	log.Println("[Plugin:hikiot] 菜单已成功注入系统菜单树")
+	log.Println("[Plugin:hikiot] 菜单已成功升级并注入系统菜单树")
 }
 
 func (p *HikPlugin) Install() error {

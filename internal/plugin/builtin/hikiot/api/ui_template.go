@@ -13,128 +13,112 @@ const HikUIHTML = `<!DOCTYPE html>
   <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@2.3.1/dist/index.iife.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; margin: 0; padding: 20px; color: #303133; }
-    .header { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-    .header h2 { margin: 0; font-size: 20px; color: #1f2937; display: flex; align-items: center; gap: 10px; }
+    .header-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); margin-bottom: 20px; }
     .card-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); }
     .door-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 15px; }
-    .door-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fafafa; transition: all 0.2s; }
-    .door-card:hover { border-color: #4f46e5; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1); background: #fff; }
     .door-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .door-title { font-weight: 600; font-size: 16px; color: #111827; }
     .door-code { font-size: 12px; color: #6b7280; font-family: monospace; }
-    .door-actions { display: flex; gap: 8px; margin-top: 15px; }
-    .status-badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-    .status-online { background: #10b981; }
-    .status-offline { background: #9ca3af; }
+    .door-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid #f0f0f0; margin-top: 15px; }
     .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; }
-    .shift-day { background-color: #d1f2e1 !important; color: #008a3d !important; font-weight: bold; cursor: pointer; text-align: center; }
-    .shift-night { background-color: #e0e0ff !important; color: #4f46e5 !important; font-weight: bold; cursor: pointer; text-align: center; }
-    .shift-exception { background-color: #ffe4e6 !important; color: #e11d48 !important; font-weight: bold; cursor: pointer; text-align: center; }
-    .shift-blank { background-color: transparent !important; cursor: pointer; text-align: center; }
-    .shift-leave { background-color: #fef3c7 !important; color: #d97706 !important; font-weight: bold; cursor: pointer; text-align: center; }
     .el-table .cell { padding: 0 4px !important; }
   </style>
 </head>
 <body>
   <div id="app">
-    <div class="header">
-      <h2>
-        <el-icon color="#4f46e5"><video-camera /></el-icon>
-        海康互联 (Hik-Connect) 物联网管控中心
-      </h2>
-      <el-tag type="success" effect="dark" round>MVP 插件模式运行中</el-tag>
+    <div class="header-box">
+      <el-page-header @back="goBack" :icon="null">
+        <template #content>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <el-icon color="#4f46e5" size="24"><video-camera /></el-icon>
+            <span style="font-size: 18px; font-weight: 600;">{{ getTitle() }}</span>
+          </div>
+        </template>
+        <template #extra>
+          <el-tag type="success" effect="dark" round>MVP 插件模式运行中</el-tag>
+        </template>
+      </el-page-header>
     </div>
 
     <div class="card-box">
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-        <!-- 标签页 1：门禁设备管控 -->
-        <el-tab-pane label="门禁设备管控" name="doors">
-          <div class="filter-bar">
+      
+      <!-- 页面 1：门禁设备管控 -->
+      <div v-if="activeTab === 'doors'">
+        <el-form :inline="true" class="filter-bar">
+          <el-form-item>
             <el-button type="primary" :loading="syncingDoors" @click="syncDoors">
               <el-icon><refresh /></el-icon> 同步海康门禁点
             </el-button>
+          </el-form-item>
+          <el-form-item>
             <el-text type="info" style="font-size: 13px;">包含远程一键开门、关门控制，自动推送动作至设备点</el-text>
-          </div>
+          </el-form-item>
+        </el-form>
 
-          <div class="door-grid" v-loading="loadingDoors">
-            <div v-for="d in doors" :key="d.door_index_code" class="door-card">
-              <div class="door-header">
-                <div class="door-title">{{ d.door_name }}</div>
-                <el-tag :type="d.status === 1 ? 'success' : 'info'" size="small">
-                  <span class="status-badge" :class="d.status === 1 ? 'status-online' : 'status-offline'"></span>
-                  {{ d.status === 1 ? '设备在线' : '设备离线' }}
-                </el-tag>
-              </div>
-              <div class="door-code">编号: {{ d.door_index_code }} (通道 {{ d.channel_no }})</div>
+        <div v-if="!loadingDoors && doors.length === 0" style="padding: 40px 0;">
+          <el-empty description="暂无设备数据，请点击同步"></el-empty>
+        </div>
 
-              <div class="door-actions">
-                <el-button type="success" size="small" :loading="controlling[d.door_index_code + '_1']" @click="controlDoor(d.door_index_code, 1)">
-                  远程开门
-                </el-button>
-                <el-button type="danger" size="small" :loading="controlling[d.door_index_code + '_0']" @click="controlDoor(d.door_index_code, 0)">
-                  关门
-                </el-button>
-                <el-button type="warning" size="small" :loading="controlling[d.door_index_code + '_2']" @click="controlDoor(d.door_index_code, 2)">
-                  常开模式
-                </el-button>
-              </div>
+        <div class="door-grid" v-loading="loadingDoors">
+          <el-card shadow="hover" v-for="d in doors" :key="d.door_index_code" :body-style="{ padding: '16px' }">
+            <div class="door-header">
+              <div class="door-title">{{ d.door_name }}</div>
+              <el-tag :type="d.status === 1 ? 'success' : 'info'" effect="light" size="small">
+                {{ d.status === 1 ? '设备在线' : '设备离线' }}
+              </el-tag>
             </div>
-          </div>
-        </el-tab-pane>
+            <div class="door-code">编号: {{ d.door_index_code }} (通道 {{ d.channel_no }})</div>
 
-        <!-- 标签页 2：考勤刷卡记录 -->
-        <el-tab-pane label="打卡考勤记录" name="attendance">
-          <div class="filter-bar">
+            <div class="door-actions">
+              <el-popconfirm title="确定要远程开启此门吗？" @confirm="controlDoor(d.door_index_code, 1)">
+                <template #reference>
+                  <el-button type="success" text size="small" :loading="controlling[d.door_index_code + '_1']">远程开门</el-button>
+                </template>
+              </el-popconfirm>
+              <el-button type="info" text size="small" :loading="controlling[d.door_index_code + '_0']" @click="controlDoor(d.door_index_code, 0)">关门</el-button>
+              <el-button type="warning" text size="small" :loading="controlling[d.door_index_code + '_2']" @click="controlDoor(d.door_index_code, 2)">常开模式</el-button>
+            </div>
+          </el-card>
+        </div>
+      </div>
+
+      <!-- 页面 2：考勤刷卡记录 -->
+      <div v-if="activeTab === 'attendance'">
+        <el-form :inline="true" class="filter-bar">
+          <el-form-item>
             <el-input v-model="attQuery.person_name" placeholder="检索姓名" style="width: 160px;" clearable></el-input>
+          </el-form-item>
+          <el-form-item>
             <el-date-picker v-model="attQuery.start_date" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" style="width: 140px;"></el-date-picker>
+          </el-form-item>
+          <el-form-item>
             <el-date-picker v-model="attQuery.end_date" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" style="width: 140px;"></el-date-picker>
+          </el-form-item>
+          <el-form-item>
             <el-button type="primary" @click="loadAttendance">查询记录</el-button>
-          </div>
+          </el-form-item>
+        </el-form>
 
-          <el-table :data="attendance" stripe v-loading="loadingAtt" style="width: 100%;">
-            <el-table-column prop="job_no" label="工号" width="120"></el-table-column>
-            <el-table-column prop="person_name" label="姓名" width="120"></el-table-column>
-            <el-table-column prop="door_name" label="通行门禁位置"></el-table-column>
-            <el-table-column label="打卡方式" width="130">
-              <template #default="scope">
-                <el-tag :type="scope.row.verify_mode === 1 ? 'primary' : 'success'" size="small">
-                  {{ scope.row.verify_mode === 1 ? '人脸识别' : '刷卡通行' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="clock_time" label="打卡时间" width="200"></el-table-column>
-          </el-table>
-        </el-tab-pane>
+        <el-table :data="attendance" stripe v-loading="loadingAtt" style="width: 100%;">
+          <template #empty><el-empty description="暂无打卡数据，请尝试切换日期"></el-empty></template>
+          <el-table-column prop="job_no" label="工号" width="120"></el-table-column>
+          <el-table-column prop="person_name" label="姓名" width="120"></el-table-column>
+          <el-table-column prop="door_name" label="通行门禁位置"></el-table-column>
+          <el-table-column label="打卡方式" width="130">
+            <template #default="scope">
+              <el-tag :type="scope.row.verify_mode === 1 ? 'primary' : 'success'" size="small">
+                {{ scope.row.verify_mode === 1 ? '人脸识别' : '刷卡通行' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="clock_time" label="打卡时间" width="200"></el-table-column>
+        </el-table>
+      </div>
 
-        <!-- 标签页 3：人员与组织档案 -->
-        <el-tab-pane label="人员组织结构" name="persons">
-          <div class="filter-bar">
-            <el-input v-model="personKeyword" placeholder="检索人员/工号/手机号" style="width: 220px;" clearable @keyup.enter="loadPersons"></el-input>
-            <el-button type="primary" @click="loadPersons">查询人员</el-button>
-            <el-button type="success" :loading="syncingPersons" @click="syncPersons">同步组织与人员数据</el-button>
-          </div>
-
-          <el-table :data="persons.slice((personPage - 1) * personPageSize, personPage * personPageSize)" stripe v-loading="loadingPersons" style="width: 100%;">
-            <el-table-column prop="person_id" label="海康 PersonID" width="180"></el-table-column>
-            <el-table-column prop="person_name" label="姓名" width="150"></el-table-column>
-            <el-table-column prop="job_no" label="工号" width="150"></el-table-column>
-            <el-table-column prop="phone_no" label="手机号码"></el-table-column>
-          </el-table>
-
-          <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
-            <el-pagination
-              v-model:current-page="personPage"
-              v-model:page-size="personPageSize"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next, jumper"
-              :total="persons.length">
-            </el-pagination>
-          </div>
-        </el-tab-pane>
-
-        <!-- 标签页 4：排班考勤汇总 -->
-        <el-tab-pane label="排班考勤汇总" name="matrix">
-          <div class="filter-bar">
+      <!-- 页面 3：排班考勤汇总 -->
+      <div v-if="activeTab === 'matrix'">
+        <el-form :inline="true" class="filter-bar">
+          <el-form-item>
             <el-date-picker
               v-model="matrixMonth"
               type="month"
@@ -142,37 +126,42 @@ const HikUIHTML = `<!DOCTYPE html>
               value-format="YYYY-MM"
               @change="loadMatrix">
             </el-date-picker>
+          </el-form-item>
+          <el-form-item>
             <el-button type="primary" :loading="calculatingMatrix" @click="calculateMatrix">
               <el-icon><cpu /></el-icon> 一键智能排班判定
             </el-button>
-          </div>
+          </el-form-item>
+        </el-form>
 
-          <el-table :data="matrixData" stripe v-loading="loadingMatrix" style="width: 100%; margin-top: 15px;" border>
-            <el-table-column prop="person_name" label="姓名" width="90" fixed="left"></el-table-column>
-            <el-table-column prop="job_no" label="工号" width="100" fixed="left"></el-table-column>
-            <el-table-column label="考勤规则" width="90" fixed="left">
-               <template #default>排班打卡</template>
-            </el-table-column>
-            
-            <el-table-column v-for="day in daysInMonth" :key="day.num" width="50" align="center">
-              <template #header>
-                <div style="line-height: 1.2; font-size: 12px; color: #606266;">
-                  <div>{{ day.week }}</div>
-                  <div>{{ parseInt(day.num) }}</div>
-                </div>
-              </template>
-              <template #default="scope">
-                <div 
-                  :class="getCellClass(scope.row.days[day.num])" 
-                  @click="handleCellClick(scope.row, day.num)"
-                  style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; min-height: 40px; font-size: 12px;">
-                  {{ scope.row.days[day.num] || '' }}
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
+        <el-table :data="matrixData" stripe v-loading="loadingMatrix" style="width: 100%;" border>
+          <template #empty><el-empty description="暂无排班数据，请点击一键智能判定"></el-empty></template>
+          <el-table-column prop="person_name" label="姓名" width="90" fixed="left"></el-table-column>
+          <el-table-column prop="job_no" label="工号" width="100" fixed="left"></el-table-column>
+          <el-table-column label="考勤规则" width="90" fixed="left">
+             <template #default>排班打卡</template>
+          </el-table-column>
+          
+          <el-table-column v-for="day in daysInMonth" :key="day.num" width="55" align="center">
+            <template #header>
+              <div style="line-height: 1.2; font-size: 12px; color: #606266;">
+                <div>{{ day.week }}</div>
+                <div>{{ parseInt(day.num) }}</div>
+              </div>
+            </template>
+            <template #default="scope">
+              <div @click="handleCellClick(scope.row, day.num)" style="cursor: pointer;">
+                <el-tag v-if="scope.row.days[day.num] === '白班'" type="success" effect="light" size="small">白班</el-tag>
+                <el-tag v-else-if="scope.row.days[day.num] === '夜班'" type="primary" effect="dark" size="small">夜班</el-tag>
+                <el-tag v-else-if="scope.row.days[day.num] === '请假'" type="warning" effect="light" size="small">请假</el-tag>
+                <el-tag v-else-if="scope.row.days[day.num] === '休息'" type="info" effect="light" size="small">休息</el-tag>
+                <el-tag v-else-if="scope.row.days[day.num]" type="danger" effect="plain" size="small">{{ scope.row.days[day.num] }}</el-tag>
+                <span v-else style="color: #ccc;">-</span>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <!-- 手工调整弹窗 -->
       <el-dialog v-model="editDialogVisible" title="考勤结果手工调整" width="400px">
@@ -212,6 +201,12 @@ const HikUIHTML = `<!DOCTYPE html>
     const app = createApp({
       setup() {
         const activeTab = ref('doors');
+        const getTitle = () => {
+          if (activeTab.value === 'doors') return '门禁设备管控';
+          if (activeTab.value === 'attendance') return '打卡考勤记录';
+          return '排班考勤汇总';
+        };
+
         const doors = ref([]);
         const loadingDoors = ref(false);
         const syncingDoors = ref(false);
@@ -220,13 +215,6 @@ const HikUIHTML = `<!DOCTYPE html>
         const attendance = ref([]);
         const loadingAtt = ref(false);
         const attQuery = reactive({ person_name: '', start_date: '', end_date: '' });
-
-        const persons = ref([]);
-        const loadingPersons = ref(false);
-        const syncingPersons = ref(false);
-        const personKeyword = ref('');
-        const personPage = ref(1);
-        const personPageSize = ref(20);
 
         const getAuthHeader = () => {
           const urlParams = new URLSearchParams(window.location.search);
@@ -291,36 +279,6 @@ const HikUIHTML = `<!DOCTYPE html>
           loadingAtt.value = false;
         };
 
-        const loadPersons = async () => {
-          loadingPersons.value = true;
-          try {
-            const res = await fetch('/api/v1/hikiot/persons/search?keyword=' + encodeURIComponent(personKeyword.value), { headers: getAuthHeader() });
-            const json = await res.json();
-            if (json.code === 200) persons.value = json.data || [];
-          } catch(e) {}
-          loadingPersons.value = false;
-        };
-
-        const syncPersons = async () => {
-          syncingPersons.value = true;
-          try {
-            await fetch('/api/v1/hikiot/sync/persons', { method: 'POST', headers: getAuthHeader() });
-            ElementPlus.ElMessage.success('人员组织数据同步完成');
-            await loadPersons();
-          } catch(e) {}
-          syncingPersons.value = false;
-        };
-
-        const handleTabChange = (tabName) => {
-          if (tabName === 'doors') loadDoors();
-          // if (tabName === 'attendance') loadAttendance(); // 用户要求点击查询再拉取
-          if (tabName === 'persons') loadPersons();
-        };
-
-        onMounted(() => {
-          loadDoors();
-        });
-
         // --- 排班矩阵视图逻辑 ---
         const matrixMonth = ref(new Date().toISOString().slice(0, 7)); // 默认当前月
         const matrixData = ref([]);
@@ -336,7 +294,6 @@ const HikUIHTML = `<!DOCTYPE html>
           if (!matrixMonth.value) return;
           loadingMatrix.value = true;
           try {
-            // 计算这个月有多少天，生成动态列
             const [y, m] = matrixMonth.value.split('-');
             const days = new Date(y, m, 0).getDate();
             const cols = [];
@@ -379,14 +336,6 @@ const HikUIHTML = `<!DOCTYPE html>
           calculatingMatrix.value = false;
         };
 
-        const getCellClass = (shiftType) => {
-          if (shiftType === '白班') return 'shift-day';
-          if (shiftType === '夜班') return 'shift-night';
-          if (shiftType === '请假' || shiftType === '休息') return 'shift-leave';
-          if (shiftType && shiftType !== '空白') return 'shift-exception';
-          return 'shift-blank';
-        };
-
         const handleCellClick = (row, day) => {
           editForm.personId = row.person_id;
           editForm.personName = row.person_name;
@@ -421,22 +370,30 @@ const HikUIHTML = `<!DOCTYPE html>
           savingEdit.value = false;
         };
 
-        // --- 拦截 tab 切换加载矩阵 ---
-        const originalHandleTabChange = handleTabChange;
-        const newHandleTabChange = (name) => {
-          if (name === 'matrix' && matrixData.value.length === 0) {
-             loadMatrix();
+        onMounted(() => {
+          const path = window.location.pathname;
+          if (path.includes('ui_records') || path.includes('records')) {
+            activeTab.value = 'attendance';
+          } else if (path.includes('ui_matrix') || path.includes('matrix')) {
+            activeTab.value = 'matrix';
+            loadMatrix();
+          } else {
+            activeTab.value = 'doors';
+            loadDoors();
           }
-          originalHandleTabChange(name);
+        });
+
+        const goBack = () => {
+          window.history.back();
         };
 
         return {
-          activeTab, doors, loadingDoors, syncingDoors, controlling,
+          activeTab, getTitle,
+          doors, loadingDoors, syncingDoors, controlling,
           attendance, loadingAtt, attQuery, loadAttendance,
-          persons, loadingPersons, syncingPersons, personKeyword, personPage, personPageSize, loadPersons, syncPersons,
-          loadDoors, controlDoor, handleTabChange: newHandleTabChange,
+          loadDoors, syncDoors, controlDoor,
           matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
-          getCellClass, handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit
+          handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack
         };
       }
     });

@@ -235,7 +235,11 @@ func (h *HikHandler) UpdateMatrixResult(c *gin.Context) {
 func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 	api := group.Group("/hikiot")
 	{
-		api.GET("/ui", handler.RenderUI)
+		// 独立渲染各个菜单页面
+		api.GET("/ui_doors", handler.RenderUI)
+		api.GET("/ui_records", handler.RenderUI)
+		api.GET("/ui_matrix", handler.RenderUI)
+		
 		api.GET("/config", handler.GetConfig)
 		api.POST("/config", handler.SaveConfig)
 		api.GET("/doors", handler.ListDoors)
