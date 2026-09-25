@@ -6,12 +6,11 @@
 </div>
 
 <p align="center">
-  <a href="https://crm.gzyaowei.cn/">线上管理后台 (Vercel)</a> ·
-  <a href="https://handicapped-teodora-diyvv-ddf9b75d.koyeb.app/health">后端 API 健康监测 (Koyeb)</a> ·
   <a href="#功能特性">功能特性</a> ·
-  <a href="#云原生部署">云原生部署</a> ·
-  <a href="#海康互联插件-mvp">海康插件</a> ·
-  <a href="#配置说明">配置说明</a>
+  <a href="#技术栈">技术栈</a> ·
+  <a href="#云原生部署指南">云原生部署</a> ·
+  <a href="#海康互联-hik-connect-插件开发与配置">海康插件</a> ·
+  <a href="#本地开发调试">本地开发调试</a>
 </p>
 
 <p align="center">
@@ -32,17 +31,6 @@
 **Admin-crm (ApeAdmin-Gin)** 是基于 **Go (Gin + GORM) + Vue 3 (Element Plus)** 打造的高性能后台管理与物联网插件底座，原生适配 **AI Agent MCP (Model Context Protocol)** 协议与云原生容器化部署。
 
 框架天生适配高并发业务系统、多实例横向扩展与云端免费容器托管环境（如 Koyeb + Vercel + PostgreSQL）。具备三级插件化扩展能力、标准 RBAC 权限体系、海康威视（Hik-Connect）物联网门禁考勤插件及 AI 智能体工具调用网关。
-
----
-
-## 🌟 演示环境
-
-无需本地搭建，可直接访问云端部署演示：
-
-- **线上后台地址**：[https://crm.gzyaowei.cn/](https://crm.gzyaowei.cn/)（部署于 Vercel，绑定独立域名）
-- **后端 API 健康节点**：[https://handicapped-teodora-diyvv-ddf9b75d.koyeb.app/health](https://handicapped-teodora-diyvv-ddf9b75d.koyeb.app/health)（部署于 Koyeb）
-- **测试账号**：`admin`
-- **默认密码**：`admin123`
 
 ---
 
@@ -88,7 +76,7 @@
 | :--- | :--- | :--- |
 | **后端框架** | Go 1.26+ / Gin v1.12 / GORM v1.31 | 原生高并发，低内存占用 |
 | **数据库** | PostgreSQL / MySQL / SQLite | 自动识别云端 `DATABASE_URL`，自动迁移建表 |
-| **前端体系** | Vue 3.5 / TypeScript / Vite / Element Plus | 已部署至 Vercel (`crm.gzyaowei.cn`) |
+| **前端体系** | Vue 3.5 / TypeScript / Vite / Element Plus | 支持 Vercel / Nginx / 静态托管 |
 | **云托管平台**| Koyeb (Go 服务 + Postgres) + Vercel (前端 CDN) | 纯云原生容器化部署 |
 | **配置与日志**| Viper v1.21 / Zap v1.28 | 支持 `GA_` 前缀环境变量覆盖，异步队列日志 |
 | **AI / 物联网**| MCP 协议 / 海康互联 Open API | 开放平台 HMAC-SHA256 签名，AI Agent 工具调用 |
@@ -102,7 +90,7 @@
 ```
     【用户浏览器】
          │
-         ├──► 访问前端：https://crm.gzyaowei.cn/ (Vercel 托管)
+         ├──► 访问前端：https://<your-frontend-domain> (Vercel / Nginx 托管)
          │       │
          │       └──► /api/v1 反向代理 (vercel.json)
          │               │
