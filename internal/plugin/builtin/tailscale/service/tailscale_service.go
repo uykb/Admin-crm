@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
 	tsclient "apeadmin-gin/internal/plugin/builtin/tailscale/client"
 	tsmodel "apeadmin-gin/internal/plugin/builtin/tailscale/model"
 
+	"golang.org/x/net/proxy"
 	"gorm.io/gorm"
 )
 
@@ -418,24 +420,49 @@ func (s *TailscaleService) DiagnoseDevice(target string, port int, protocol stri
 	address := fmt.Sprintf("%s:%d", target, port)
 	start := time.Now()
 
-	// 尝试建立 TCP 握手
-	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	var conn net.Conn
+	var err error
+	channel := "本地直连 (Direct Network)"
+
+	cfg, _ := s.GetConfig()
+	if cfg != nil && cfg.ProxyURL != "" {
+		if u, parseErr := url.Parse(cfg.ProxyURL); parseErr == nil && strings.HasPrefix(strings.ToLower(u.Scheme), "socks5") {
+			channel = fmt.Sprintf("SOCKS5 代理通道 (%s)", u.Host)
+			dialer, dialerErr := proxy.FromURL(u, proxy.Direct)
+			if dialerErr == nil {
+				conn, err = dialer.Dial("tcp", address)
+			}
+		}
+	}
+
+	if conn == nil && err == nil {
+		conn, err = net.DialTimeout("tcp", address, 3*time.Second)
+	}
+
 	latency := time.Since(start).Milliseconds()
 
 	result := map[string]interface{}{
-		"target":        target,
-		"port":          port,
-		"protocol":      protocol,
-		"address":       address,
-		"latency_ms":    latency,
-		"connected":     err == nil,
-		"checked_at":    time.Now().Format("2006-01-02 15:04:05"),
-		"preset_hint":   getProtocolHint(port),
+		"target":      target,
+		"port":        port,
+		"protocol":    protocol,
+		"address":     address,
+		"latency_ms":  latency,
+		"channel":     channel,
+		"connected":   err == nil,
+		"checked_at":  time.Now().Format("2006-01-02 15:04:05"),
+		"preset_hint": getProtocolHint(port),
 	}
 
 	if err != nil {
 		result["error"] = err.Error()
 		result["status"] = "unreachable"
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "no route") {
+			if cfg == nil || cfg.ProxyURL == "" {
+				result["tip"] = "提示：云端容器默认无 Tailscale TUN 虚拟网卡路由。如需从云端连通内网设备，请在 [连接与代理配置] 填入 SOCKS5 代理地址（如 socks5://127.0.0.1:1055），或确认本地客户端/防火墙设置。"
+			} else {
+				result["tip"] = "提示：连接超时，请检查目标设备服务端口是否已开启监听，以及 Tailscale ACL 策略或系统防火墙是否放行。"
+			}
+		}
 	} else {
 		defer conn.Close()
 		result["status"] = "reachable"

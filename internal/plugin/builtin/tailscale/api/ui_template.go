@@ -319,8 +319,10 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           </el-tag>
         </div>
         <div style="font-size: 13px; color: #4b5563;">响应延迟: <b>{{ diagResult.latency_ms }} ms</b></div>
+        <div style="font-size: 13px; color: #4b5563;">诊断通道: {{ diagResult.channel || '本地直连' }}</div>
         <div style="font-size: 13px; color: #4b5563;">目标服务: {{ diagResult.preset_hint }}</div>
         <div v-if="diagResult.error" style="font-size: 12px; color: #ef4444; margin-top: 4px;">错误详情: {{ diagResult.error }}</div>
+        <div v-if="diagResult.tip" style="font-size: 12px; color: #d97706; margin-top: 6px; background: #fef3c7; padding: 6px 8px; border-radius: 4px;">{{ diagResult.tip }}</div>
       </div>
       <template #footer>
         <el-button @click="diagDialogVisible = false">关闭</el-button>
