@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"strings"
@@ -398,13 +399,23 @@ func (s *TailscaleService) ListKeyLogs() ([]tsmodel.TsKeyLog, error) {
 	return logs, err
 }
 
-// RevokeAuthKey 撤销 Auth Key
+// RevokeAuthKey 撤销 Auth Key 并从本地数据库同步清除记录
 func (s *TailscaleService) RevokeAuthKey(keyID string) error {
 	cli, err := s.getClient()
 	if err != nil {
 		return err
 	}
-	return cli.RevokeAuthKey(keyID)
+
+	// 1. 调用 Tailscale 官方 API 撤销
+	if err := cli.RevokeAuthKey(keyID); err != nil {
+		log.Printf("[Plugin:tailscale] 调用官方 API 撤销 Key %s 失败或已在云端过期: %v", keyID, err)
+	}
+
+	// 2. 从本地 ts_key_log 记录中彻底删除 (无论云端是否存在都清理本地)
+	if s.db != nil {
+		s.db.Unscoped().Where("key_id = ?", keyID).Delete(&tsmodel.TsKeyLog{})
+	}
+	return nil
 }
 
 // GetACL 获取当前 Policy ACL 策略

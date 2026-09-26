@@ -52,18 +52,21 @@ func (s *TailscaleService) ExecuteSSHCommand(target string, port int, user, pass
 
 	address := fmt.Sprintf("%s:%d", target, port)
 
-	// 1. 获取底层连接 (优先 tsnet 内存拨号)
+	// 1. 获取底层连接 (优先 tsnet 内存拨号，若未配置则尝试通用 SOCKS5/直接拨号)
 	var conn net.Conn
 	var err error
 	tsnetMgr := tsproxy.GetTsnetManager()
-	if tsnetMgr.IsRunning() {
-		conn, err = tsnetMgr.DialTimeout("tcp", address, 5*time.Second)
-	} else {
-		conn, err = net.DialTimeout("tcp", address, 5*time.Second)
-	}
+	conn, err = tsnetMgr.DialTimeout("tcp", address, 5*time.Second)
 
 	if err != nil {
-		return "", fmt.Errorf("连接目标 SSH 端口 %s 失败: %w", address, err)
+		cfg, _ := s.GetConfig()
+		tip := ""
+		if cfg == nil || (cfg.ProxyURL == "" && cfg.AuthKey == "") {
+			tip = "【诊断提示】：云端容器（Koyeb）自身不在局域网内。请在 [连接与嵌入式节点配置] 填入 SOCKS5 代理地址（例如您本地或服务器开的 socks5://xxx:1055）以穿透内网。"
+		} else {
+			tip = "【诊断提示】：目标主机 100.74.17.86 未开启 22 端口监听，或本地防火墙未放行来自 Tailscale 网卡的入站流量。"
+		}
+		return "", fmt.Errorf("连接目标 SSH 端口 %s 失败: %w\n%s", address, err, tip)
 	}
 	defer conn.Close()
 
