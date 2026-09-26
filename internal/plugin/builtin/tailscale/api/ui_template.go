@@ -5,7 +5,7 @@ const TailscaleUIHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tailscale 虚拟组网与设备管控中心</title>
+  <title>Tailscale 万物互联与设备管控中枢</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.css" />
   <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.full.min.js"></script>
@@ -19,7 +19,7 @@ const TailscaleUIHTML = `<!DOCTYPE html>
     .stat-title { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
     .stat-value { font-size: 24px; font-weight: 700; color: #111827; }
     .card-box { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); }
-    .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 15px; }
+    .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; margin-top: 15px; }
     .device-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fafafa; transition: all 0.2s; position: relative; }
     .device-card:hover { border-color: #5A67F5; box-shadow: 0 4px 12px rgba(90, 103, 245, 0.12); background: #fff; }
     .device-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
@@ -31,7 +31,9 @@ const TailscaleUIHTML = `<!DOCTYPE html>
     .status-offline { background: #9ca3af; }
     .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
     .key-box { background: #111827; color: #10b981; font-family: monospace; padding: 12px 16px; border-radius: 6px; margin-top: 10px; word-break: break-all; position: relative; }
-    .code-preview { background: #282c34; color: #abb2bf; padding: 16px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; }
+    .code-preview { background: #282c34; color: #abb2bf; padding: 16px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 450px; overflow-y: auto; }
+    .tag-badge { margin-right: 4px; margin-bottom: 4px; }
+    .diag-res-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-top: 15px; }
   </style>
 </head>
 <body>
@@ -39,16 +41,18 @@ const TailscaleUIHTML = `<!DOCTYPE html>
     <div class="header">
       <h2>
         <el-icon color="#5A67F5"><connection /></el-icon>
-        Tailscale 虚拟组网与内网设备管控中心
+        Tailscale 万物互联与边缘设备管控中枢
       </h2>
-      <el-tag type="success" effect="dark" round>网络全打通 运行中</el-tag>
+      <div>
+        <el-tag type="success" effect="dark" round>P1/P2/P3 物联架构 就绪</el-tag>
+      </div>
     </div>
 
     <!-- 概览指标卡 -->
     <div class="stat-row">
       <div class="stat-card">
         <div>
-          <div class="stat-title">接入设备总数</div>
+          <div class="stat-title">接入物联/服务器节点</div>
           <div class="stat-value">{{ devices.length }}</div>
         </div>
         <el-icon size="32" color="#5A67F5"><monitor /></el-icon>
@@ -62,15 +66,15 @@ const TailscaleUIHTML = `<!DOCTYPE html>
       </div>
       <div class="stat-card">
         <div>
-          <div class="stat-title">离线节点</div>
-          <div class="stat-value" style="color: #9ca3af;">{{ devices.length - onlineCount }}</div>
+          <div class="stat-title">免密钥过期物联设备</div>
+          <div class="stat-value" style="color: #f59e0b;">{{ expiryDisabledCount }}</div>
         </div>
-        <el-icon size="32" color="#9ca3af"><warning /></el-icon>
+        <el-icon size="32" color="#f59e0b"><key /></el-icon>
       </div>
       <div class="stat-card">
         <div>
-          <div class="stat-title">所属 Tailnet</div>
-          <div class="stat-value" style="font-size: 16px; word-break: break-all;">{{ configForm.tailnet || '未配置' }}</div>
+          <div class="stat-title">所属 Tailnet 网络</div>
+          <div class="stat-value" style="font-size: 15px; word-break: break-all;">{{ configForm.tailnet || '未配置' }}</div>
         </div>
         <el-icon size="32" color="#8b5cf6"><share /></el-icon>
       </div>
@@ -78,13 +82,16 @@ const TailscaleUIHTML = `<!DOCTYPE html>
 
     <div class="card-box">
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-        <!-- 标签页 1：设备与节点管理 -->
-        <el-tab-pane label="组网节点列表" name="devices">
+        <!-- 标签页 1：组网节点管控 (P1 + P2 + P3) -->
+        <el-tab-pane label="组网节点管控" name="devices">
           <div class="filter-bar">
-            <el-input v-model="deviceSearch" placeholder="搜索设备名/主机名/IP" style="width: 260px;" clearable @keyup.enter="loadDevices"></el-input>
+            <el-input v-model="deviceSearch" placeholder="搜索设备名/主机名/IP/Tag" style="width: 280px;" clearable @keyup.enter="loadDevices"></el-input>
             <el-button type="primary" @click="loadDevices">查询节点</el-button>
             <el-button type="success" :loading="syncing" @click="syncDevices">
               <el-icon><refresh /></el-icon> 同步 Tailnet 节点
+            </el-button>
+            <el-button type="warning" @click="openQuickDiag('')">
+              <el-icon><aim /></el-icon> 全网物联协议连通性诊断
             </el-button>
           </div>
 
@@ -92,8 +99,11 @@ const TailscaleUIHTML = `<!DOCTYPE html>
             <div v-for="d in devices" :key="d.device_id" class="device-card">
               <div class="device-header">
                 <div>
-                  <div class="device-name">{{ d.name || d.hostname }}</div>
-                  <div class="device-user">所有者: {{ d.user || '全网共享' }} | 系统: {{ d.os }} (v{{ d.client_version }})</div>
+                  <div class="device-name" :title="d.name || d.hostname">
+                    {{ d.name || d.hostname }}
+                    <el-button type="primary" link size="small" @click="openRename(d)"><el-icon><edit /></el-icon></el-button>
+                  </div>
+                  <div class="device-user">所有者: {{ d.user || '全网共享' }} | 系统: {{ d.os }} (v{{ d.client_version || 'N/A' }})</div>
                 </div>
                 <el-tag :type="d.online ? 'success' : 'info'" size="small">
                   <span class="status-dot" :class="d.online ? 'status-online' : 'status-offline'"></span>
@@ -101,17 +111,50 @@ const TailscaleUIHTML = `<!DOCTYPE html>
                 </el-tag>
               </div>
 
-              <div style="margin-top: 10px;">
-                <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Tailscale 内网 IP (点击可复制):</div>
+              <!-- 内网 IP -->
+              <div style="margin-top: 8px;">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Tailscale 内网 IP:</div>
                 <div>
-                  <el-tag v-for="ip in parseIPs(d.ips)" :key="ip" class="ip-tag" size="small" type="primary" effect="plain" @click="copyText(ip)">
+                  <el-tag v-for="ip in parseJSON(d.ips)" :key="ip" class="ip-tag" size="small" type="primary" effect="plain" @click="copyText(ip)">
                     {{ ip }}
                   </el-tag>
                 </div>
               </div>
 
+              <!-- 标签 Tags (P3 零信任微隔离) -->
+              <div style="margin-top: 6px;">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">安全标签 (Tags):</div>
+                <div>
+                  <el-tag v-for="tag in parseJSON(d.tags)" :key="tag" class="tag-badge" size="small" type="warning" effect="light">
+                    {{ tag }}
+                  </el-tag>
+                  <el-button type="warning" link size="small" @click="openTags(d)">+ 配置标签</el-button>
+                </div>
+              </div>
+
+              <!-- 子网路由 (P2) -->
+              <div style="margin-top: 6px;" v-if="parseSubnetRoutes(d.subnet_routes).length > 0">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">广播子网路由:</div>
+                <div>
+                  <el-tag v-for="r in parseSubnetRoutes(d.subnet_routes)" :key="r" size="small" type="success" effect="plain" class="tag-badge">
+                    {{ r }}
+                  </el-tag>
+                  <el-button type="success" link size="small" @click="openRoutes(d)">审批路由</el-button>
+                </div>
+              </div>
+
+              <!-- 免过期策略 (P1 物联网必备) -->
+              <div style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 6px 10px; border-radius: 6px; border: 1px dashed #d1d5db;">
+                <span style="font-size: 12px; color: #4b5563;">免密钥过期 (IoT 永不掉线)</span>
+                <el-switch :model-value="d.key_expiry_disabled" active-color="#10b981" @change="(val) => toggleKeyExpiry(d, val)"></el-switch>
+              </div>
+
+              <!-- 操作区 -->
               <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #9ca3af;">最后活跃: {{ formatTime(d.last_seen) }}</span>
+                <div>
+                  <el-button type="primary" link size="small" @click="openQuickDiag(parsePrimaryIP(d.ips))">协议诊断</el-button>
+                  <el-button type="success" link size="small" @click="openRoutes(d)">子网路由</el-button>
+                </div>
                 <el-popconfirm title="确定下线并注销该设备？" @confirm="deleteDevice(d.device_id)">
                   <template #reference>
                     <el-button type="danger" link size="small">解绑注销</el-button>
@@ -122,8 +165,8 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           </div>
         </el-tab-pane>
 
-        <!-- 标签页 2：Auth Key 接入密钥生成 -->
-        <el-tab-pane label="Auth Key 接入密钥" name="keys">
+        <!-- 标签页 2：Auth Key 接入密钥生成 (P1) -->
+        <el-tab-pane label="Auth Key 密钥管理" name="keys">
           <el-row :gutter="20">
             <el-col :span="10">
               <h3 style="margin-top: 0;">生成设备接入密钥 (Auth Key)</h3>
@@ -138,18 +181,18 @@ const TailscaleUIHTML = `<!DOCTYPE html>
                   <el-switch v-model="keyForm.preauthorized" active-text="自动批准接入 (Pre-authorized)" inactive-text="需管理员核准"></el-switch>
                 </el-form-item>
                 <el-form-item label="附加 Tags">
-                  <el-input v-model="keyForm.tagsStr" placeholder="如 tag:server,tag:prod (多标签逗号分隔)"></el-input>
+                  <el-input v-model="keyForm.tagsStr" placeholder="如 tag:iot-door,tag:camera (多标签逗号分隔)"></el-input>
                 </el-form-item>
                 <el-form-item label="有效天数">
-                  <el-input-number v-model="keyForm.expiry_days" :min="1" :max="90"></el-input-number>
+                  <el-input-number v-model="keyForm.expiry_days" :min="1" :max="365"></el-input-number>
                 </el-form-item>
                 <el-form-item label="使用用途">
-                  <el-input v-model="keyForm.purpose" placeholder="如: 生产服务器接入/测试机连通"></el-input>
+                  <el-input v-model="keyForm.purpose" placeholder="如: 深圳工厂门禁网关接入"></el-input>
                 </el-form-item>
                 <el-form-item>
                   <el-button type="primary" :loading="creatingKey" @click="createAuthKey">立即生成 Key</el-button>
                 </el-form-item>
-              </form>
+              </el-form>
             </el-col>
 
             <el-col :span="14">
@@ -160,7 +203,7 @@ const TailscaleUIHTML = `<!DOCTYPE html>
                 </div>
                 <div style="margin-top: 10px;">
                   <el-button type="primary" size="small" @click="copyText(newlyCreatedKey.key)">复制密钥</el-button>
-                  <el-button type="success" size="small" @click="copyText('tailscale up --authkey=' + newlyCreatedKey.key)">复制命令行命令 (tailscale up --authkey=...)</el-button>
+                  <el-button type="success" size="small" @click="copyText('tailscale up --authkey=' + newlyCreatedKey.key)">复制一键接入命令</el-button>
                 </div>
               </div>
 
@@ -175,21 +218,162 @@ const TailscaleUIHTML = `<!DOCTYPE html>
                 </el-table-column>
                 <el-table-column prop="created_by" label="创建者" width="100"></el-table-column>
                 <el-table-column prop="created_at" label="生成时间" width="150"></el-table-column>
+                <el-table-column label="操作" width="90">
+                  <template #default="scope">
+                    <el-button type="danger" link size="small" @click="revokeAuthKey(scope.row.key_id)">撤销</el-button>
+                  </template>
+                </el-table-column>
               </el-table>
             </el-col>
-          </row>
+          </el-row>
         </el-tab-pane>
 
-        <!-- 标签页 3：ACL 安全策略查看 -->
-        <el-tab-pane label="ACL 访问控制策略" name="acl">
+        <!-- 标签页 3：零信任 ACL 策略管控 (P3) -->
+        <el-tab-pane label="零信任 ACL 策略管控" name="acl">
           <div class="filter-bar">
-            <el-button type="primary" @click="loadACL">刷新 ACL 策略</el-button>
-            <el-text type="info">查看当前 Tailnet 组网使用的 HuJSON 安全访问策略文件</el-text>
+            <el-button type="primary" @click="loadACL">读取当前 ACL</el-button>
+            <el-button type="success" @click="applyTemplate('iot')">应用万物互联微隔离模版</el-button>
+            <el-button type="info" @click="applyTemplate('full')">应用全网互通模版</el-button>
+            <el-button type="warning" @click="validateACL">语法校验</el-button>
+            <el-button type="danger" :loading="savingACL" @click="saveACL">保存并推送生效</el-button>
           </div>
-          <div class="code-preview" v-loading="loadingACL">{{ aclContent || '未加载 ACL 数据' }}</div>
+          <el-input type="textarea" :rows="18" v-model="aclContent" font-family="monospace" placeholder="Tailscale HuJSON ACL Policy 内容"></el-input>
+        </el-tab-pane>
+
+        <!-- 标签页 4：Webhook 实时遥测事件 (P1) -->
+        <el-tab-pane label="Webhook 实时遥测" name="webhook">
+          <el-alert title="Tailscale Webhook 事件回调端点已就绪" type="info" :closable="false" show-icon style="margin-bottom: 15px;">
+            <template #default>
+              <div>请在 Tailscale 控制台 Webhook 设置中配置此接收 URL: <code>/api/v1/tailscale/webhook</code></div>
+              <div>当边缘物联节点上下线、密钥到期、子网路由变动时，系统将通过内部 EventBus 自动感知并同步。</div>
+            </template>
+          </el-alert>
+          <div class="filter-bar">
+            <el-button type="primary" @click="loadWebhookLogs">刷新遥测事件流</el-button>
+          </div>
+          <el-table :data="webhookLogs" stripe style="width: 100%;" size="small">
+            <el-table-column prop="created_at" label="时间" width="160"></el-table-column>
+            <el-table-column prop="event_type" label="事件类型" width="160">
+              <template #default="scope">
+                <el-tag size="small" type="primary">{{ scope.row.event_type }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="tailnet" label="所属 Tailnet" width="160"></el-table-column>
+            <el-table-column prop="message" label="事件描述"></el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <!-- 标签页 5：连接与透明代理配置 -->
+        <el-tab-pane label="连接与代理配置" name="config">
+          <el-form :model="configForm" label-width="140px" style="max-width: 650px;">
+            <el-form-item label="Tailnet 名称">
+              <el-input v-model="configForm.tailnet" placeholder="如: mytailnet.ts.net 或 user@github"></el-input>
+            </el-form-item>
+            <el-form-item label="API Key">
+              <el-input v-model="configForm.api_key" type="password" show-password placeholder="tskey-api-xxx (API Key 或 OAuth 填一即可)"></el-input>
+            </el-form-item>
+            <el-form-item label="OAuth Client ID">
+              <el-input v-model="configForm.client_id" placeholder="kxxxxxx"></el-input>
+            </el-form-item>
+            <el-form-item label="OAuth Client Secret">
+              <el-input v-model="configForm.client_secret" type="password" show-password placeholder="tskey-client-xxxx"></el-input>
+            </el-form-item>
+            <el-form-item label="Webhook Secret">
+              <el-input v-model="configForm.webhook_secret" type="password" show-password placeholder="Tailscale Webhook 签名密钥 (HMAC-SHA256)"></el-input>
+            </el-form-item>
+            <el-form-item label="透明代理解析 URL">
+              <el-input v-model="configForm.proxy_url" placeholder="socks5://127.0.0.1:1055 或 http://127.0.0.1:1080"></el-input>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
+            </el-form-item>
+          </el-form>
         </el-tab-pane>
       </el-tabs>
     </div>
+
+    <!-- 诊断弹窗 -->
+    <el-dialog v-model="diagDialogVisible" title="物联设备协议与端口连通性诊断" width="550px">
+      <el-form :model="diagForm" label-width="100px">
+        <el-form-item label="目标地址">
+          <el-input v-model="diagForm.target" placeholder="100.x.x.x / 域名 / 局域网 IP"></el-input>
+        </el-form-item>
+        <el-form-item label="常用协议预设">
+          <el-radio-group v-model="diagForm.preset" @change="handlePresetChange">
+            <el-radio-button label="Modbus (502)"></el-radio-button>
+            <el-radio-button label="RTSP (554)"></el-radio-button>
+            <el-radio-button label="MQTT (1883)"></el-radio-button>
+            <el-radio-button label="HTTP (80)"></el-radio-button>
+            <el-radio-button label="SSH (22)"></el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="目标端口">
+          <el-input-number v-model="diagForm.port" :min="1" :max="65535"></el-input-number>
+        </el-form-item>
+      </el-form>
+      <div v-if="diagResult" class="diag-res-box">
+        <div style="font-weight: 600; margin-bottom: 6px;">
+          诊断结果:
+          <el-tag :type="diagResult.connected ? 'success' : 'danger'" size="small">
+            {{ diagResult.connected ? '链路畅通 (Reachable)' : '无法连通 (Unreachable)' }}
+          </el-tag>
+        </div>
+        <div style="font-size: 13px; color: #4b5563;">响应延迟: <b>{{ diagResult.latency_ms }} ms</b></div>
+        <div style="font-size: 13px; color: #4b5563;">目标服务: {{ diagResult.preset_hint }}</div>
+        <div v-if="diagResult.error" style="font-size: 12px; color: #ef4444; margin-top: 4px;">错误详情: {{ diagResult.error }}</div>
+      </div>
+      <template #footer>
+        <el-button @click="diagDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="runningDiag" @click="runDiagnose">立即测试连通性</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 改名弹窗 -->
+    <el-dialog v-model="renameDialogVisible" title="修改设备名称 / MagicDNS 域名" width="400px">
+      <el-form>
+        <el-form-item label="设备名称">
+          <el-input v-model="renameForm.name" placeholder="如: shenzhen-gateway-01"></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="renameDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitRename">确认修改</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 标签弹窗 -->
+    <el-dialog v-model="tagsDialogVisible" title="配置设备安全标签 (Tags)" width="450px">
+      <el-form>
+        <el-form-item label="Tags (逗号分隔)">
+          <el-input v-model="tagsForm.tagsStr" placeholder="如: tag:iot-door,tag:camera"></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="tagsDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitTags">保存标签</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 路由审批弹窗 -->
+    <el-dialog v-model="routesDialogVisible" title="子网路由审批管理" width="500px">
+      <div style="margin-bottom: 10px; font-size: 13px; color: #6b7280;">
+        勾选允许该设备作为 Subnet Router 广播并打通的局域网 CIDR 网段：
+      </div>
+      <el-checkbox-group v-model="routesForm.selectedRoutes">
+        <el-checkbox v-for="r in routesForm.allRoutes" :key="r" :label="r">{{ r }}</el-checkbox>
+      </el-checkbox-group>
+      <div style="margin-top: 15px;">
+        <el-input v-model="routesForm.customRoute" placeholder="输入追加 CIDR (如 192.168.10.0/24)">
+          <template #append>
+            <el-button @click="addCustomRoute">添加</el-button>
+          </template>
+        </el-input>
+      </div>
+      <template #footer>
+        <el-button @click="routesDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitRoutes">确认生效路由</el-button>
+      </template>
+    </el-dialog>
   </div>
 
   <script>
@@ -202,17 +386,37 @@ const TailscaleUIHTML = `<!DOCTYPE html>
         const syncing = ref(false);
         const deviceSearch = ref('');
 
-        const keyForm = reactive({ reusable: true, ephemeral: false, preauthorized: true, tagsStr: '', expiry_days: 30, purpose: '' });
+        const keyForm = reactive({ reusable: true, ephemeral: false, preauthorized: true, tagsStr: '', expiry_days: 90, purpose: '' });
         const creatingKey = ref(false);
         const newlyCreatedKey = ref(null);
         const keyLogs = ref([]);
 
         const aclContent = ref('');
         const loadingACL = ref(false);
+        const savingACL = ref(false);
 
-        const configForm = reactive({ tailnet: '' });
+        const webhookLogs = ref([]);
+
+        const configForm = reactive({ tailnet: '', api_key: '', client_id: '', client_secret: '', webhook_secret: '', proxy_url: '' });
+        const savingConfig = ref(false);
+
+        // 弹窗状态
+        const diagDialogVisible = ref(false);
+        const diagForm = reactive({ target: '', port: 80, preset: 'HTTP (80)' });
+        const diagResult = ref(null);
+        const runningDiag = ref(false);
+
+        const renameDialogVisible = ref(false);
+        const renameForm = reactive({ device_id: '', name: '' });
+
+        const tagsDialogVisible = ref(false);
+        const tagsForm = reactive({ device_id: '', tagsStr: '' });
+
+        const routesDialogVisible = ref(false);
+        const routesForm = reactive({ device_id: '', allRoutes: [], selectedRoutes: [], customRoute: '' });
 
         const onlineCount = computed(() => devices.value.filter(d => d.online).length);
+        const expiryDisabledCount = computed(() => devices.value.filter(d => d.key_expiry_disabled).length);
 
         const getAuthHeader = () => {
           const urlParams = new URLSearchParams(window.location.search);
@@ -261,6 +465,151 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           } catch(e) {}
         };
 
+        const toggleKeyExpiry = async (device, disabled) => {
+          try {
+            const res = await fetch('/api/v1/tailscale/devices/' + device.device_id + '/key-expiry', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ disabled: disabled })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              device.key_expiry_disabled = disabled;
+              ElementPlus.ElMessage.success(disabled ? '已开启免密钥过期 (IoT 永不掉线)' : '已恢复定期过期');
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '更新失败');
+            }
+          } catch(e) {}
+        };
+
+        const openRename = (device) => {
+          renameForm.device_id = device.device_id;
+          renameForm.name = device.name || device.hostname;
+          renameDialogVisible.value = true;
+        };
+
+        const submitRename = async () => {
+          try {
+            const res = await fetch('/api/v1/tailscale/devices/' + renameForm.device_id + '/name', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: renameForm.name })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('设备重命名成功');
+              renameDialogVisible.value = false;
+              loadDevices();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '修改失败');
+            }
+          } catch(e) {}
+        };
+
+        const openTags = (device) => {
+          tagsForm.device_id = device.device_id;
+          const tags = parseJSON(device.tags);
+          tagsForm.tagsStr = tags.join(',');
+          tagsDialogVisible.value = true;
+        };
+
+        const submitTags = async () => {
+          try {
+            const tags = tagsForm.tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+            const res = await fetch('/api/v1/tailscale/devices/' + tagsForm.device_id + '/tags', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tags: tags })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('设备标签更新成功');
+              tagsDialogVisible.value = false;
+              loadDevices();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '更新标签失败');
+            }
+          } catch(e) {}
+        };
+
+        const openRoutes = async (device) => {
+          routesForm.device_id = device.device_id;
+          routesForm.allRoutes = [];
+          routesForm.selectedRoutes = [];
+          try {
+            const res = await fetch('/api/v1/tailscale/devices/' + device.device_id + '/routes', { headers: getAuthHeader() });
+            const json = await res.json();
+            if (json.code === 200 && json.data) {
+              routesForm.allRoutes = json.data.advertisedRoutes || [];
+              routesForm.selectedRoutes = json.data.enabledRoutes || [];
+            }
+          } catch(e) {}
+          routesDialogVisible.value = true;
+        };
+
+        const addCustomRoute = () => {
+          if (routesForm.customRoute && !routesForm.allRoutes.includes(routesForm.customRoute)) {
+            routesForm.allRoutes.push(routesForm.customRoute);
+            routesForm.selectedRoutes.push(routesForm.customRoute);
+            routesForm.customRoute = '';
+          }
+        };
+
+        const submitRoutes = async () => {
+          try {
+            const res = await fetch('/api/v1/tailscale/devices/' + routesForm.device_id + '/routes', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ routes: routesForm.selectedRoutes })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('子网路由审批已生效');
+              routesDialogVisible.value = false;
+              loadDevices();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '审批路由失败');
+            }
+          } catch(e) {}
+        };
+
+        const openQuickDiag = (target) => {
+          diagForm.target = target || '';
+          diagResult.value = null;
+          diagDialogVisible.value = true;
+        };
+
+        const handlePresetChange = (preset) => {
+          if (preset.includes('502')) diagForm.port = 502;
+          else if (preset.includes('554')) diagForm.port = 554;
+          else if (preset.includes('1883')) diagForm.port = 1883;
+          else if (preset.includes('80')) diagForm.port = 80;
+          else if (preset.includes('22')) diagForm.port = 22;
+        };
+
+        const runDiagnose = async () => {
+          if (!diagForm.target) {
+            ElementPlus.ElMessage.warning('请输入目标地址');
+            return;
+          }
+          runningDiag.value = true;
+          diagResult.value = null;
+          try {
+            const res = await fetch('/api/v1/tailscale/diagnose', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ target: diagForm.target, port: diagForm.port, protocol: diagForm.preset })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              diagResult.value = json.data;
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '诊断执行失败');
+            }
+          } catch(e) {}
+          runningDiag.value = false;
+        };
+
         const createAuthKey = async () => {
           creatingKey.value = true;
           try {
@@ -298,6 +647,19 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           } catch(e) {}
         };
 
+        const revokeAuthKey = async (keyID) => {
+          try {
+            const res = await fetch('/api/v1/tailscale/keys/' + keyID, { method: 'DELETE', headers: getAuthHeader() });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('密钥已撤销');
+              loadKeyLogs();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '撤销失败');
+            }
+          } catch(e) {}
+        };
+
         const loadACL = async () => {
           loadingACL.value = true;
           try {
@@ -308,29 +670,118 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           loadingACL.value = false;
         };
 
+        const validateACL = async () => {
+          try {
+            const res = await fetch('/api/v1/tailscale/acl/validate', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ hujson: aclContent.value })
+            });
+            const json = await res.json();
+            if (json.code === 200) ElementPlus.ElMessage.success('ACL 语法校验通过！');
+            else ElementPlus.ElMessage.error(json.msg || '校验失败');
+          } catch(e) {}
+        };
+
+        const saveACL = async () => {
+          savingACL.value = true;
+          try {
+            const res = await fetch('/api/v1/tailscale/acl', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ hujson: aclContent.value })
+            });
+            const json = await res.json();
+            if (json.code === 200) ElementPlus.ElMessage.success('ACL 策略已保存并成功生效！');
+            else ElementPlus.ElMessage.error(json.msg || '保存失败');
+          } catch(e) {}
+          savingACL.value = false;
+        };
+
+        const applyTemplate = (type) => {
+          if (type === 'iot') {
+            aclContent.value = `// Tailscale 零信任万物互联微隔离策略 (HuJSON)
+{
+  "tagOwners": {
+    "tag:crm-server": ["autogroup:admin"],
+    "tag:iot-gateway": ["autogroup:admin"],
+    "tag:iot-door": ["autogroup:admin"],
+    "tag:camera": ["autogroup:admin"]
+  },
+  "acls": [
+    // 1. 允许 CRM 服务端访问所有边缘物联节点及摄像头 RTSP/Web
+    { "action": "accept", "src": ["tag:crm-server", "autogroup:admin"], "dst": ["*:*"] },
+    // 2. 允许边缘物联网设备向 CRM 后端上报数据 (8001/MQTT)
+    { "action": "accept", "src": ["tag:iot-gateway", "tag:iot-door"], "dst": ["tag:crm-server:8001,1883"] }
+  ]
+}`;
+          } else {
+            aclContent.value = `// 全网互通开发策略
+{
+  "acls": [
+    { "action": "accept", "src": ["*"], "dst": ["*:*"] }
+  ]
+}`;
+          }
+        };
+
+        const loadWebhookLogs = async () => {
+          try {
+            const res = await fetch('/api/v1/tailscale/webhook/logs', { headers: getAuthHeader() });
+            const json = await res.json();
+            if (json.code === 200) webhookLogs.value = json.data || [];
+          } catch(e) {}
+        };
+
         const loadConfig = async () => {
           try {
             const res = await fetch('/api/v1/tailscale/config', { headers: getAuthHeader() });
             const json = await res.json();
             if (json.code === 200 && json.data) {
-              configForm.tailnet = json.data.tailnet || '';
+              Object.assign(configForm, json.data);
             }
           } catch(e) {}
         };
 
-        const parseIPs = (ipsStr) => {
-          if (!ipsStr) return [];
-          try { return JSON.parse(ipsStr); } catch(e) { return [ipsStr]; }
+        const saveConfig = async () => {
+          savingConfig.value = true;
+          try {
+            const res = await fetch('/api/v1/tailscale/config', {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              body: JSON.stringify(configForm)
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('配置保存成功');
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '保存失败');
+            }
+          } catch(e) {}
+          savingConfig.value = false;
         };
 
-        const formatTime = (tStr) => {
-          if (!tStr) return '-';
-          return tStr.replace('T', ' ').slice(0, 19);
+        const parseJSON = (str) => {
+          if (!str) return [];
+          try { return JSON.parse(str) || []; } catch(e) { return [str]; }
+        };
+
+        const parsePrimaryIP = (ipsStr) => {
+          const ips = parseJSON(ipsStr);
+          return ips.length > 0 ? ips[0] : '';
+        };
+
+        const parseSubnetRoutes = (routesStr) => {
+          if (!routesStr) return [];
+          try {
+            const obj = JSON.parse(routesStr);
+            return obj.enabledRoutes || obj.advertisedRoutes || [];
+          } catch(e) { return []; }
         };
 
         const copyText = (txt) => {
           navigator.clipboard.writeText(txt).then(() => {
-            ElementPlus.ElMessage.success('已复制到剪贴板');
+            ElementPlus.ElMessage.success('已复制: ' + txt);
           });
         };
 
@@ -338,6 +789,8 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           if (tabName === 'devices') loadDevices();
           if (tabName === 'keys') loadKeyLogs();
           if (tabName === 'acl') loadACL();
+          if (tabName === 'webhook') loadWebhookLogs();
+          if (tabName === 'config') loadConfig();
         };
 
         onMounted(() => {
@@ -346,11 +799,16 @@ const TailscaleUIHTML = `<!DOCTYPE html>
         });
 
         return {
-          activeTab, devices, loadingDevices, syncing, deviceSearch, onlineCount,
-          keyForm, creatingKey, newlyCreatedKey, keyLogs, createAuthKey,
-          aclContent, loadingACL, loadACL,
-          configForm,
-          loadDevices, syncDevices, deleteDevice, parseIPs, formatTime, copyText, handleTabChange
+          activeTab, devices, loadingDevices, syncing, deviceSearch, onlineCount, expiryDisabledCount,
+          keyForm, creatingKey, newlyCreatedKey, keyLogs, createAuthKey, revokeAuthKey,
+          aclContent, loadingACL, savingACL, loadACL, validateACL, saveACL, applyTemplate,
+          webhookLogs, loadWebhookLogs,
+          configForm, savingConfig, saveConfig,
+          diagDialogVisible, diagForm, diagResult, runningDiag, openQuickDiag, handlePresetChange, runDiagnose,
+          renameDialogVisible, renameForm, openRename, submitRename,
+          tagsDialogVisible, tagsForm, openTags, submitTags,
+          routesDialogVisible, routesForm, openRoutes, addCustomRoute, submitRoutes,
+          loadDevices, syncDevices, deleteDevice, toggleKeyExpiry, parseJSON, parsePrimaryIP, parseSubnetRoutes, copyText, handleTabChange
         };
       }
     });

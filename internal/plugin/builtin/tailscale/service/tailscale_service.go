@@ -1,8 +1,13 @@
 package service
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strings"
 	"time"
 
 	tsclient "apeadmin-gin/internal/plugin/builtin/tailscale/client"
@@ -21,10 +26,12 @@ func NewTailscaleService(db *gorm.DB) *TailscaleService {
 
 // ConfigDTO 配置传输对象
 type ConfigDTO struct {
-	Tailnet      string `json:"tailnet"`
-	APIKey       string `json:"api_key"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+	Tailnet       string `json:"tailnet"`
+	APIKey        string `json:"api_key"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	WebhookSecret string `json:"webhook_secret"`
+	ProxyURL      string `json:"proxy_url"`
 }
 
 // GetConfig 读取当前连接配置
@@ -42,24 +49,28 @@ func (s *TailscaleService) GetConfig() (*ConfigDTO, error) {
 	}
 
 	return &ConfigDTO{
-		Tailnet:      cfgMap["tailscale_tailnet"],
-		APIKey:       cfgMap["tailscale_api_key"],
-		ClientID:     cfgMap["tailscale_client_id"],
-		ClientSecret: cfgMap["tailscale_client_secret"],
+		Tailnet:       cfgMap["tailscale_tailnet"],
+		APIKey:        cfgMap["tailscale_api_key"],
+		ClientID:      cfgMap["tailscale_client_id"],
+		ClientSecret:  cfgMap["tailscale_client_secret"],
+		WebhookSecret: cfgMap["tailscale_webhook_secret"],
+		ProxyURL:      cfgMap["tailscale_proxy_url"],
 	}, nil
 }
 
 // SaveConfig 保存连接配置
-func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret string) error {
+func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret, webhookSecret, proxyURL string) error {
 	if s.db == nil {
 		return fmt.Errorf("数据库连接不可用")
 	}
 
 	items := map[string]string{
-		"tailscale_tailnet":       tailnet,
-		"tailscale_api_key":       apiKey,
-		"tailscale_client_id":     clientID,
-		"tailscale_client_secret": clientSecret,
+		"tailscale_tailnet":        tailnet,
+		"tailscale_api_key":        apiKey,
+		"tailscale_client_id":      clientID,
+		"tailscale_client_secret":  clientSecret,
+		"tailscale_webhook_secret": webhookSecret,
+		"tailscale_proxy_url":      proxyURL,
 	}
 
 	for k, v := range items {
@@ -129,9 +140,12 @@ func (s *TailscaleService) SyncDevices() (int, error) {
 			record.UpdateAvailable = dev.UpdateAvailable
 			record.LastSeen = dev.LastSeen
 			record.Online = isOnline
+			record.Authorized = dev.Authorized
 			record.KeyExpiryDisabled = dev.KeyExpiryDisabled
+			record.ExpiresAt = dev.Expires
 			record.Tags = string(tagsJSON)
 			record.SubnetRoutes = string(routesJSON)
+			record.NodeKey = dev.NodeKey
 			s.db.Save(&record)
 		} else {
 			s.db.Create(&tsmodel.TsDeviceCache{
@@ -145,9 +159,12 @@ func (s *TailscaleService) SyncDevices() (int, error) {
 				UpdateAvailable:   dev.UpdateAvailable,
 				LastSeen:          dev.LastSeen,
 				Online:            isOnline,
+				Authorized:        dev.Authorized,
 				KeyExpiryDisabled: dev.KeyExpiryDisabled,
+				ExpiresAt:         dev.Expires,
 				Tags:              string(tagsJSON),
 				SubnetRoutes:      string(routesJSON),
+				NodeKey:           dev.NodeKey,
 			})
 		}
 	}
@@ -165,8 +182,8 @@ func (s *TailscaleService) ListCachedDevices(keyword string) ([]tsmodel.TsDevice
 	query := s.db.Order("online desc, last_seen desc")
 	if keyword != "" {
 		likePattern := "%" + keyword + "%"
-		query = query.Where("name LIKE ? OR hostname LIKE ? OR ips LIKE ? OR user LIKE ?",
-			likePattern, likePattern, likePattern, likePattern)
+		query = query.Where("name LIKE ? OR hostname LIKE ? OR ips LIKE ? OR user LIKE ? OR tags LIKE ?",
+			likePattern, likePattern, likePattern, likePattern, likePattern)
 	}
 
 	if err := query.Find(&devices).Error; err != nil {
@@ -204,6 +221,94 @@ func (s *TailscaleService) DeleteDevice(deviceID string) error {
 		s.db.Where("device_id = ?", deviceID).Delete(&tsmodel.TsDeviceCache{})
 	}
 	return nil
+}
+
+// SetKeyExpiry 设置设备免密钥过期
+func (s *TailscaleService) SetKeyExpiry(deviceID string, disabled bool) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.SetDeviceKeyExpiry(deviceID, disabled); err != nil {
+		return err
+	}
+
+	if s.db != nil {
+		s.db.Model(&tsmodel.TsDeviceCache{}).Where("device_id = ?", deviceID).Update("key_expiry_disabled", disabled)
+	}
+	return nil
+}
+
+// SetDeviceName 修改设备名称
+func (s *TailscaleService) SetDeviceName(deviceID string, name string) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.SetDeviceName(deviceID, name); err != nil {
+		return err
+	}
+
+	if s.db != nil {
+		s.db.Model(&tsmodel.TsDeviceCache{}).Where("device_id = ?", deviceID).Update("name", name)
+	}
+	return nil
+}
+
+// SetDeviceTags 修改设备标签
+func (s *TailscaleService) SetDeviceTags(deviceID string, tags []string) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.SetDeviceTags(deviceID, tags); err != nil {
+		return err
+	}
+
+	if s.db != nil {
+		tagsJSON, _ := json.Marshal(tags)
+		s.db.Model(&tsmodel.TsDeviceCache{}).Where("device_id = ?", deviceID).Update("tags", string(tagsJSON))
+	}
+	return nil
+}
+
+// SetDeviceAuthorized 设备核准授权
+func (s *TailscaleService) SetDeviceAuthorized(deviceID string, authorized bool) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.SetDeviceAuthorized(deviceID, authorized); err != nil {
+		return err
+	}
+
+	if s.db != nil {
+		s.db.Model(&tsmodel.TsDeviceCache{}).Where("device_id = ?", deviceID).Update("authorized", authorized)
+	}
+	return nil
+}
+
+// SetDeviceIP 设置静态 IP
+func (s *TailscaleService) SetDeviceIP(deviceID string, ipv4, ipv6 string) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+
+	return cli.SetDeviceIP(deviceID, ipv4, ipv6)
+}
+
+// GetDeviceRoutes 获取设备路由详情
+func (s *TailscaleService) GetDeviceRoutes(deviceID string) (*tsclient.RoutesResponse, error) {
+	cli, err := s.getClient()
+	if err != nil {
+		return nil, err
+	}
+	return cli.GetDeviceRoutes(deviceID)
 }
 
 // ApproveSubnetRoutes 审批设备广播的子网路由与 Exit Node
@@ -280,4 +385,158 @@ func (s *TailscaleService) GetACL() (string, error) {
 		return "", err
 	}
 	return cli.GetACL()
+}
+
+// UpdateACL 更新 Policy ACL 策略
+func (s *TailscaleService) UpdateACL(hujson string) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+	return cli.UpdateACL(hujson)
+}
+
+// ValidateACL 校验 Policy ACL 策略格式
+func (s *TailscaleService) ValidateACL(hujson string) error {
+	cli, err := s.getClient()
+	if err != nil {
+		return err
+	}
+	return cli.ValidateACL(hujson)
+}
+
+// DiagnoseDevice 对内网节点进行连通性与 IoT 协议端口诊断
+func (s *TailscaleService) DiagnoseDevice(target string, port int, protocol string) (map[string]interface{}, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return nil, fmt.Errorf("目标地址不能为空")
+	}
+	if port <= 0 || port > 65535 {
+		port = 80
+	}
+
+	address := fmt.Sprintf("%s:%d", target, port)
+	start := time.Now()
+
+	// 尝试建立 TCP 握手
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	latency := time.Since(start).Milliseconds()
+
+	result := map[string]interface{}{
+		"target":        target,
+		"port":          port,
+		"protocol":      protocol,
+		"address":       address,
+		"latency_ms":    latency,
+		"connected":     err == nil,
+		"checked_at":    time.Now().Format("2006-01-02 15:04:05"),
+		"preset_hint":   getProtocolHint(port),
+	}
+
+	if err != nil {
+		result["error"] = err.Error()
+		result["status"] = "unreachable"
+	} else {
+		defer conn.Close()
+		result["status"] = "reachable"
+	}
+
+	return result, nil
+}
+
+// getProtocolHint 获取常见物联与工控端口提示
+func getProtocolHint(port int) string {
+	switch port {
+	case 502:
+		return "Modbus-TCP 工业控制协议"
+	case 554:
+		return "RTSP / ONVIF 实时视频流协议"
+	case 1883, 8883:
+		return "MQTT 物联网消息总线"
+	case 80, 8080:
+		return "HTTP 局域网 Web 管理端"
+	case 443, 8443:
+		return "HTTPS 安全 Web 服务"
+	case 22:
+		return "SSH 远程终端维护"
+	case 8000, 8001:
+		return "海康威视 / 局域网服务管理端口"
+	default:
+		return "自定义应用服务端口"
+	}
+}
+
+// ProcessWebhook 处理 Tailscale Webhook 事件
+func (s *TailscaleService) ProcessWebhook(rawBody []byte, signatureHeader string) (*tsclient.WebhookEvent, error) {
+	cfg, _ := s.GetConfig()
+	if cfg != nil && cfg.WebhookSecret != "" {
+		// 校验 Webhook 签名 (HMAC-SHA256)
+		mac := hmac.New(sha256.New, []byte(cfg.WebhookSecret))
+		mac.Write(rawBody)
+		expectedSig := hex.EncodeToString(mac.Sum(nil))
+
+		// Signature Header 可能包含 t=xxx,v1=xxx 或直接为 hex
+		actualSig := signatureHeader
+		if strings.Contains(signatureHeader, "v1=") {
+			parts := strings.Split(signatureHeader, ",")
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if strings.HasPrefix(p, "v1=") {
+					actualSig = strings.TrimPrefix(p, "v1=")
+					break
+				}
+			}
+		}
+
+		if actualSig != "" && !hmac.Equal([]byte(expectedSig), []byte(actualSig)) {
+			// 签名不匹配依然记录日志但返回错误
+			if s.db != nil {
+				s.db.Create(&tsmodel.TsWebhookLog{
+					EventType: "auth_failed",
+					Tailnet:   cfg.Tailnet,
+					Message:   "Webhook HMAC 签名校验失败",
+					RawBody:   string(rawBody),
+				})
+			}
+			return nil, fmt.Errorf("Webhook 签名校验未通过")
+		}
+	}
+
+	var event tsclient.WebhookEvent
+	if err := json.Unmarshal(rawBody, &event); err != nil {
+		return nil, fmt.Errorf("解析 Webhook JSON 载荷失败: %w", err)
+	}
+
+	// 记录 Webhook 审计日志
+	if s.db != nil {
+		s.db.Create(&tsmodel.TsWebhookLog{
+			EventType: event.Type,
+			Tailnet:   event.Tailnet,
+			Message:   event.Message,
+			RawBody:   string(rawBody),
+		})
+	}
+
+	// 针对特定事件类型执行自愈与联动更新
+	switch event.Type {
+	case "nodeCreated", "nodeDeleted", "subnetRoutesChanged", "nodeNeedsApproval":
+		go func() {
+			_, _ = s.SyncDevices()
+		}()
+	}
+
+	return &event, nil
+}
+
+// ListWebhookLogs 获取 Webhook 事件日志
+func (s *TailscaleService) ListWebhookLogs(limit int) ([]tsmodel.TsWebhookLog, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("数据库连接不可用")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	var logs []tsmodel.TsWebhookLog
+	err := s.db.Order("created_at desc").Limit(limit).Find(&logs).Error
+	return logs, err
 }

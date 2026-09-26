@@ -70,6 +70,13 @@ func RegisterTools(mgr *mcp.Manager, db *gorm.DB) {
 					"type":        "integer",
 					"description": "密钥有效天数（默认 30 天）",
 				},
+				"tags": map[string]interface{}{
+					"type":        "array",
+					"description": "赋予接入设备的标签列表（如 [\"tag:iot-door\", \"tag:gateway\"]）",
+					"items": map[string]interface{}{
+						"type": "string",
+					},
+				},
 			},
 			"required": []string{"purpose"},
 		},
@@ -91,7 +98,16 @@ func RegisterTools(mgr *mcp.Manager, db *gorm.DB) {
 				expiryDays = daysInt
 			}
 
-			res, err := svc.CreateAuthKey(reusable, ephemeral, preauth, nil, expiryDays, purpose, "AI_Agent")
+			var tags []string
+			if rawTags, ok := args["tags"].([]interface{}); ok {
+				for _, t := range rawTags {
+					if ts, ok := t.(string); ok {
+						tags = append(tags, ts)
+					}
+				}
+			}
+
+			res, err := svc.CreateAuthKey(reusable, ephemeral, preauth, tags, expiryDays, purpose, "AI_Agent")
 			if err != nil {
 				return nil, fmt.Errorf("生成 Auth Key 失败: %w", err)
 			}
@@ -178,7 +194,193 @@ func RegisterTools(mgr *mcp.Manager, db *gorm.DB) {
 			if err != nil {
 				return nil, fmt.Errorf("核准子网路由失败: %w", err)
 			}
+
+			return map[string]interface{}{
+				"device_id":         deviceID,
+				"enabled_routes":    res.EnabledRoutes,
+				"advertised_routes": res.AdvertisedRoutes,
+				"message":           "子网路由已成功核准生效",
+			}, nil
+		},
+	})
+
+	// 5. 设置免密钥过期工具 tailscale_set_key_expiry (P1 关键能力: 物联网设备永不掉线)
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "tailscale_set_key_expiry",
+		Description: "设置指定 Tailscale 节点设备的密钥是否免过期（针对无人值守物联设备推荐设置为免过期，防止 90/180 天秘钥过期掉线）",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Tailscale 设备 ID",
+				},
+				"disabled": map[string]interface{}{
+					"type":        "boolean",
+					"description": "true 为永久免过期，false 为恢复定期过期校验",
+				},
+			},
+			"required": []string{"device_id", "disabled"},
+		},
+		PluginName:          "tailscale",
+		Category:            "network",
+		RequiredPermissions: []string{"tailscale:device:control"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			deviceID, _ := args["device_id"].(string)
+			disabled, ok := args["disabled"].(bool)
+			if deviceID == "" || !ok {
+				return nil, fmt.Errorf("参数 device_id 和 disabled 不能为空")
+			}
+			if err := svc.SetKeyExpiry(deviceID, disabled); err != nil {
+				return nil, fmt.Errorf("设置密钥过期策略失败: %w", err)
+			}
+			statusText := "永久免过期"
+			if !disabled {
+				statusText = "开启定期过期校验"
+			}
+			return fmt.Sprintf("设备 %s 密钥过期策略已成功更新为: %s", deviceID, statusText), nil
+		},
+	})
+
+	// 6. 设备重命名工具 tailscale_set_device_name (P1 MagicDNS 固定映射)
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "tailscale_set_device_name",
+		Description: "修改 Tailscale 设备节点的显示名称与 MagicDNS 域名",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Tailscale 设备 ID",
+				},
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "新的设备名称（如: factory-gateway-01 / door-controller-1f）",
+				},
+			},
+			"required": []string{"device_id", "name"},
+		},
+		PluginName:          "tailscale",
+		Category:            "network",
+		RequiredPermissions: []string{"tailscale:device:control"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			deviceID, _ := args["device_id"].(string)
+			name, _ := args["name"].(string)
+			if deviceID == "" || name == "" {
+				return nil, fmt.Errorf("必须提供 device_id 与 name")
+			}
+			if err := svc.SetDeviceName(deviceID, name); err != nil {
+				return nil, fmt.Errorf("重命名设备失败: %w", err)
+			}
+			return fmt.Sprintf("设备 %s 已重命名为: %s", deviceID, name), nil
+		},
+	})
+
+	// 7. 设备标签分类工具 tailscale_set_device_tags (P3 零信任微隔离)
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "tailscale_set_device_tags",
+		Description: "为指定设备设置标签 Tags（用于 ACL 零信任微隔离策略，如 tag:iot-door, tag:sensor）",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Tailscale 设备 ID",
+				},
+				"tags": map[string]interface{}{
+					"type":        "array",
+					"description": "标签列表（如 [\"tag:iot-door\", \"tag:factory\"]）",
+					"items": map[string]interface{}{
+						"type": "string",
+					},
+				},
+			},
+			"required": []string{"device_id", "tags"},
+		},
+		PluginName:          "tailscale",
+		Category:            "network",
+		RequiredPermissions: []string{"tailscale:device:control"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			deviceID, _ := args["device_id"].(string)
+			rawTags, _ := args["tags"].([]interface{})
+			if deviceID == "" {
+				return nil, fmt.Errorf("必须提供 device_id")
+			}
+			var tags []string
+			for _, t := range rawTags {
+				if s, ok := t.(string); ok {
+					tags = append(tags, s)
+				}
+			}
+			if err := svc.SetDeviceTags(deviceID, tags); err != nil {
+				return nil, fmt.Errorf("更新设备标签失败: %w", err)
+			}
+			return fmt.Sprintf("设备 %s 标签已成功更新为: %v", deviceID, tags), nil
+		},
+	})
+
+	// 8. 节点连通性与 IoT 协议诊断工具 tailscale_diagnose_device (P2 物联诊断)
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "tailscale_diagnose_device",
+		Description: "对 Tailnet 组网内的 IP、域名或子网设备进行连通性与端口诊断（支持 Modbus:502, RTSP:554, MQTT:1883, HTTP:80, SSH:22）",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"target": map[string]interface{}{
+					"type":        "string",
+					"description": "目标 Tailscale 100.x IP、MagicDNS 域名或子网局域网 IP (如 100.88.2.1 或 192.168.1.100)",
+				},
+				"port": map[string]interface{}{
+					"type":        "integer",
+					"description": "目标服务端口（默认 80；物联常用: 502=Modbus, 554=RTSP, 1883=MQTT, 22=SSH）",
+				},
+				"protocol": map[string]interface{}{
+					"type":        "string",
+					"description": "协议类型提示（如 TCP, Modbus, RTSP, MQTT, HTTP）",
+				},
+			},
+			"required": []string{"target"},
+		},
+		PluginName:          "tailscale",
+		Category:            "network",
+		RequiredPermissions: []string{"tailscale:device:list"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			target, _ := args["target"].(string)
+			port := 80
+			if p, ok := args["port"].(float64); ok && p > 0 {
+				port = int(p)
+			} else if pInt, ok := args["port"].(int); ok && pInt > 0 {
+				port = pInt
+			}
+			protocol, _ := args["protocol"].(string)
+
+			res, err := svc.DiagnoseDevice(target, port, protocol)
+			if err != nil {
+				return nil, fmt.Errorf("诊断失败: %w", err)
+			}
 			return res, nil
+		},
+	})
+
+	// 9. 获取 ACL 策略工具 tailscale_get_acl (P3 安全策略)
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "tailscale_get_acl",
+		Description: "读取当前 Tailscale 网络的 ACL 安全访问控制策略 (HuJSON 格式)",
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		PluginName:          "tailscale",
+		Category:            "network",
+		RequiredPermissions: []string{"tailscale:config:edit"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			acl, err := svc.GetACL()
+			if err != nil {
+				return nil, fmt.Errorf("读取 ACL 策略失败: %w", err)
+			}
+			return map[string]interface{}{
+				"acl_hujson": acl,
+			}, nil
 		},
 	})
 }

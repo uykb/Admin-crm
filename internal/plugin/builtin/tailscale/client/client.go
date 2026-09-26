@@ -263,6 +263,46 @@ func (c *Client) RevokeAuthKey(keyID string) error {
 	return err
 }
 
+// SetDeviceKeyExpiry 设置设备密钥是否免过期
+func (c *Client) SetDeviceKeyExpiry(deviceID string, disabled bool) error {
+	path := fmt.Sprintf("/api/v2/device/%s/key", url.PathEscape(deviceID))
+	reqBody := SetKeyExpiryRequest{KeyExpiryDisabled: disabled}
+	_, err := c.doRequest(http.MethodPost, path, reqBody)
+	return err
+}
+
+// SetDeviceName 修改设备主机/节点名称
+func (c *Client) SetDeviceName(deviceID string, name string) error {
+	path := fmt.Sprintf("/api/v2/device/%s/name", url.PathEscape(deviceID))
+	reqBody := SetDeviceNameRequest{Name: name}
+	_, err := c.doRequest(http.MethodPost, path, reqBody)
+	return err
+}
+
+// SetDeviceTags 更新设备标签 (用于 IoT 零信任微隔离)
+func (c *Client) SetDeviceTags(deviceID string, tags []string) error {
+	path := fmt.Sprintf("/api/v2/device/%s/tags", url.PathEscape(deviceID))
+	reqBody := SetDeviceTagsRequest{Tags: tags}
+	_, err := c.doRequest(http.MethodPost, path, reqBody)
+	return err
+}
+
+// SetDeviceAuthorized 核准或撤销设备入网授权
+func (c *Client) SetDeviceAuthorized(deviceID string, authorized bool) error {
+	path := fmt.Sprintf("/api/v2/device/%s/authorized", url.PathEscape(deviceID))
+	reqBody := SetDeviceAuthorizedRequest{Authorized: authorized}
+	_, err := c.doRequest(http.MethodPost, path, reqBody)
+	return err
+}
+
+// SetDeviceIP 为设备分配静态 Tailscale IP
+func (c *Client) SetDeviceIP(deviceID string, ipv4, ipv6 string) error {
+	path := fmt.Sprintf("/api/v2/device/%s/ip", url.PathEscape(deviceID))
+	reqBody := SetDeviceIPRequest{IPv4: ipv4, IPv6: ipv6}
+	_, err := c.doRequest(http.MethodPost, path, reqBody)
+	return err
+}
+
 // GetACL 获取 Policy ACL 安全策略
 func (c *Client) GetACL() (string, error) {
 	if c.tailnet == "" {
@@ -274,4 +314,68 @@ func (c *Client) GetACL() (string, error) {
 		return "", err
 	}
 	return string(bytes), nil
+}
+
+// UpdateACL 更新 Policy ACL 策略
+func (c *Client) UpdateACL(hujson string) error {
+	if c.tailnet == "" {
+		return fmt.Errorf("未配置 Tailnet 名称")
+	}
+	path := fmt.Sprintf("/api/v2/tailnet/%s/acl", url.PathEscape(c.tailnet))
+	token, err := c.ensureToken()
+	if err != nil {
+		return err
+	}
+
+	apiURL := fmt.Sprintf("%s%s", c.baseURL, path)
+	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(hujson))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/hujson")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("更新 ACL 失败 [%d]: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
+// ValidateACL 校验 Policy ACL 策略格式合法性
+func (c *Client) ValidateACL(hujson string) error {
+	if c.tailnet == "" {
+		return fmt.Errorf("未配置 Tailnet 名称")
+	}
+	path := fmt.Sprintf("/api/v2/tailnet/%s/acl/validate", url.PathEscape(c.tailnet))
+	token, err := c.ensureToken()
+	if err != nil {
+		return err
+	}
+
+	apiURL := fmt.Sprintf("%s%s", c.baseURL, path)
+	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(hujson))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/hujson")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ACL 语法校验不通过 [%d]: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
 }

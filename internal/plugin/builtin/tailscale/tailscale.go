@@ -117,9 +117,10 @@ func (p *TailscalePlugin) ensureMenu(db *gorm.DB) {
 	// 3. 按钮权限 (F)
 	btns := []model.SysMenu{
 		{Name: "设备查看", ParentID: child.ID, Type: "F", Permission: "tailscale:device:list", Sort: 1, Status: 1},
-		{Name: "设备解绑", ParentID: child.ID, Type: "F", Permission: "tailscale:device:control", Sort: 2, Status: 1},
+		{Name: "设备管控", ParentID: child.ID, Type: "F", Permission: "tailscale:device:control", Sort: 2, Status: 1},
 		{Name: "生成AuthKey", ParentID: child.ID, Type: "F", Permission: "tailscale:key:create", Sort: 3, Status: 1},
 		{Name: "配置管理", ParentID: child.ID, Type: "F", Permission: "tailscale:config:edit", Sort: 4, Status: 1},
+		{Name: "ACL策略管理", ParentID: child.ID, Type: "F", Permission: "tailscale:acl:edit", Sort: 5, Status: 1},
 	}
 	for _, b := range btns {
 		_ = db.Create(&b).Error
@@ -152,11 +153,9 @@ func (p *TailscalePlugin) Register(pr *plugin.PluginRouter) error {
 		}
 	}
 
-	// 2. 挂载 HTTP 路由
-	if pr.Authed != nil {
-		handler := tsapi.NewTailscaleHandler(pr.DB)
-		tsapi.SetupRoutes(pr.Authed, handler)
-	}
+	// 2. 挂载 HTTP 路由 (包含公开 Webhook 端点与鉴权管理接口)
+	handler := tsapi.NewTailscaleHandler(pr.DB)
+	tsapi.SetupRoutes(pr.Authed, pr.Public, handler)
 
 	// 3. 注册 AI Agent MCP 工具
 	if pr.MCP != nil {
@@ -182,11 +181,12 @@ func (p *TailscalePlugin) OnUnload() {
 }
 
 type tailscaleConfigExport struct {
-	Tailnet      string `json:"tailnet"`
-	APIKey       string `json:"api_key"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	ProxyURL     string `json:"proxy_url"`
+	Tailnet       string `json:"tailnet"`
+	APIKey        string `json:"api_key"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	WebhookSecret string `json:"webhook_secret"`
+	ProxyURL      string `json:"proxy_url"`
 }
 
 func (p *TailscalePlugin) GetConfigJSON() (string, error) {
@@ -197,16 +197,12 @@ func (p *TailscalePlugin) GetConfigJSON() (string, error) {
 		return "", err
 	}
 	exp := tailscaleConfigExport{
-		Tailnet:      cfg.Tailnet,
-		APIKey:       cfg.APIKey,
-		ClientID:     cfg.ClientID,
-		ClientSecret: cfg.ClientSecret,
-	}
-	if db != nil {
-		var tsCfg tsmodel.TsConfig
-		if err := db.Where("key = ?", "tailscale_proxy_url").First(&tsCfg).Error; err == nil {
-			exp.ProxyURL = tsCfg.Value
-		}
+		Tailnet:       cfg.Tailnet,
+		APIKey:        cfg.APIKey,
+		ClientID:      cfg.ClientID,
+		ClientSecret:  cfg.ClientSecret,
+		WebhookSecret: cfg.WebhookSecret,
+		ProxyURL:      cfg.ProxyURL,
 	}
 	b, err := json.MarshalIndent(exp, "", "  ")
 	if err != nil {
@@ -236,6 +232,10 @@ func (p *TailscalePlugin) OnConfigUpdate(configJSON string) error {
 	if clientSecret == "" {
 		clientSecret = m["tailscale_client_secret"]
 	}
+	webhookSecret := m["webhook_secret"]
+	if webhookSecret == "" {
+		webhookSecret = m["tailscale_webhook_secret"]
+	}
 	proxyURL := m["proxy_url"]
 	if proxyURL == "" {
 		proxyURL = m["tailscale_proxy_url"]
@@ -243,18 +243,11 @@ func (p *TailscalePlugin) OnConfigUpdate(configJSON string) error {
 
 	db := core.GetDB()
 	svc := tsservice.NewTailscaleService(db)
-	if err := svc.SaveConfig(tailnet, apiKey, clientID, clientSecret); err != nil {
+	if err := svc.SaveConfig(tailnet, apiKey, clientID, clientSecret, webhookSecret, proxyURL); err != nil {
 		return err
 	}
 	if db != nil && proxyURL != "" {
-		var tsCfg tsmodel.TsConfig
-		if err := db.Where("key = ?", "tailscale_proxy_url").First(&tsCfg).Error; err == nil {
-			tsCfg.Value = proxyURL
-			db.Save(&tsCfg)
-		} else {
-			db.Create(&tsmodel.TsConfig{Key: "tailscale_proxy_url", Value: proxyURL})
-		}
-		// 刷新代代理缓存
+		// 刷新代理缓存
 		resolver := tsproxy.NewTailscaleResolver(db)
 		resolver.RefreshConfig()
 	}
