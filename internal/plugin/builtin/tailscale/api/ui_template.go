@@ -700,28 +700,9 @@ const TailscaleUIHTML = `<!DOCTYPE html>
 
         const applyTemplate = (type) => {
           if (type === 'iot') {
-            aclContent.value = `// Tailscale 零信任万物互联微隔离策略 (HuJSON)
-{
-  "tagOwners": {
-    "tag:crm-server": ["autogroup:admin"],
-    "tag:iot-gateway": ["autogroup:admin"],
-    "tag:iot-door": ["autogroup:admin"],
-    "tag:camera": ["autogroup:admin"]
-  },
-  "acls": [
-    // 1. 允许 CRM 服务端访问所有边缘物联节点及摄像头 RTSP/Web
-    { "action": "accept", "src": ["tag:crm-server", "autogroup:admin"], "dst": ["*:*"] },
-    // 2. 允许边缘物联网设备向 CRM 后端上报数据 (8001/MQTT)
-    { "action": "accept", "src": ["tag:iot-gateway", "tag:iot-door"], "dst": ["tag:crm-server:8001,1883"] }
-  ]
-}`;
+            aclContent.value = '{\\n  // Tailscale 零信任万物互联微隔离策略 (HuJSON)\\n  \"tagOwners\": {\\n    \"tag:crm-server\": [\"autogroup:admin\"],\\n    \"tag:iot-gateway\": [\"autogroup:admin\"],\\n    \"tag:iot-door\": [\"autogroup:admin\"],\\n    \"tag:camera\": [\"autogroup:admin\"]\\n  },\\n  \"acls\": [\\n    // 1. 允许 CRM 服务端访问所有边缘物联节点及摄像头 RTSP/Web\\n    { \"action\": \"accept\", \"src\": [\"tag:crm-server\", \"autogroup:admin\"], \"dst\": [\"*:*\"] },\\n    // 2. 允许边缘物联网设备向 CRM 后端上报数据 (8001/MQTT)\\n    { \"action\": \"accept\", \"src\": [\"tag:iot-gateway\", \"tag:iot-door\"], \"dst\": [\"tag:crm-server:8001,1883\"] }\\n  ]\\n}';
           } else {
-            aclContent.value = `// 全网互通开发策略
-{
-  "acls": [
-    { "action": "accept", "src": ["*"], "dst": ["*:*"] }
-  ]
-}`;
+            aclContent.value = '{\\n  // 全网互通开发策略\\n  \"acls\": [\\n    { \"action\": \"accept\", \"src\": [\"*\"], \"dst\": [\"*:*\"] }\\n  ]\\n}';
           }
         };
 
