@@ -78,16 +78,7 @@ func (p *TailscalePlugin) OnLoad() error {
 		netproxy.RegisterResolver(resolver)
 		log.Println("[Plugin:tailscale] 内网透明 HTTP 代理解析器已成功注册至系统底座")
 
-		// 自动检查并尝试唤醒通信引擎
-		svc := tsservice.NewTailscaleService(db)
-		if cfg, err := svc.GetConfig(); err == nil && cfg != nil {
-			if cfg.AuthKey != "" || cfg.ProxyURL != "" {
-				_ = tsproxy.GetTsnetManager().Start(cfg.AuthKey, cfg.NodeHostname)
-				if cfg.ProxyURL != "" {
-					tsproxy.GetTsnetManager().SetProxyURL(cfg.ProxyURL)
-				}
-			}
-		}
+		// 初始化完成
 	}
 	log.Println("[Plugin:tailscale] 插件加载完成并在数据库登记")
 	return nil
@@ -179,19 +170,16 @@ func (p *TailscalePlugin) Register(pr *plugin.PluginRouter) error {
 
 func (p *TailscalePlugin) Unregister() error {
 	netproxy.UnregisterResolver("tailscale")
-	tsproxy.GetTsnetManager().Stop()
 	log.Println("[Plugin:tailscale] 内网透明 HTTP 代理解析器与 tsnet 嵌入式节点已注销释放")
 	return nil
 }
 
 func (p *TailscalePlugin) Uninstall() error {
-	tsproxy.GetTsnetManager().Stop()
 	return nil
 }
 
 func (p *TailscalePlugin) OnUnload() {
 	netproxy.UnregisterResolver("tailscale")
-	tsproxy.GetTsnetManager().Stop()
 }
 
 type tailscaleConfigExport struct {
@@ -201,8 +189,6 @@ type tailscaleConfigExport struct {
 	ClientSecret  string `json:"client_secret"`
 	WebhookSecret string `json:"webhook_secret"`
 	ProxyURL      string `json:"proxy_url"`
-	AuthKey       string `json:"auth_key"`
-	NodeHostname  string `json:"node_hostname"`
 }
 
 func (p *TailscalePlugin) GetConfigJSON() (string, error) {
@@ -219,8 +205,6 @@ func (p *TailscalePlugin) GetConfigJSON() (string, error) {
 		ClientSecret:  cfg.ClientSecret,
 		WebhookSecret: cfg.WebhookSecret,
 		ProxyURL:      cfg.ProxyURL,
-		AuthKey:       cfg.AuthKey,
-		NodeHostname:  cfg.NodeHostname,
 	}
 	b, err := json.MarshalIndent(exp, "", "  ")
 	if err != nil {
@@ -258,18 +242,9 @@ func (p *TailscalePlugin) OnConfigUpdate(configJSON string) error {
 	if proxyURL == "" {
 		proxyURL = m["tailscale_proxy_url"]
 	}
-	authKey := m["auth_key"]
-	if authKey == "" {
-		authKey = m["tailscale_auth_key"]
-	}
-	nodeHostname := m["node_hostname"]
-	if nodeHostname == "" {
-		nodeHostname = m["tailscale_node_hostname"]
-	}
-
 	db := core.GetDB()
 	svc := tsservice.NewTailscaleService(db)
-	if err := svc.SaveConfig(tailnet, apiKey, clientID, clientSecret, webhookSecret, proxyURL, authKey, nodeHostname); err != nil {
+	if err := svc.SaveConfig(tailnet, apiKey, clientID, clientSecret, webhookSecret, proxyURL); err != nil {
 		return err
 	}
 	if db != nil && proxyURL != "" {

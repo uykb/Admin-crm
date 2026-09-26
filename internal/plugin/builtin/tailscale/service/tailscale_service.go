@@ -14,7 +14,6 @@ import (
 
 	tsclient "apeadmin-gin/internal/plugin/builtin/tailscale/client"
 	tsmodel "apeadmin-gin/internal/plugin/builtin/tailscale/model"
-	tsproxy "apeadmin-gin/internal/plugin/builtin/tailscale/proxy"
 
 	"golang.org/x/net/proxy"
 	"gorm.io/gorm"
@@ -36,9 +35,6 @@ type ConfigDTO struct {
 	ClientSecret  string `json:"client_secret"`
 	WebhookSecret string `json:"webhook_secret"`
 	ProxyURL      string `json:"proxy_url"`
-	AuthKey       string `json:"auth_key"`
-	NodeHostname  string `json:"node_hostname"`
-	TsnetRunning  bool   `json:"tsnet_running"`
 }
 
 // GetConfig 读取当前连接配置
@@ -55,11 +51,6 @@ func (s *TailscaleService) GetConfig() (*ConfigDTO, error) {
 		cfgMap[c.Key] = c.Value
 	}
 
-	hostname := cfgMap["tailscale_node_hostname"]
-	if hostname == "" {
-		hostname = "apeadmin-crm"
-	}
-
 	return &ConfigDTO{
 		Tailnet:       cfgMap["tailscale_tailnet"],
 		APIKey:        cfgMap["tailscale_api_key"],
@@ -67,20 +58,13 @@ func (s *TailscaleService) GetConfig() (*ConfigDTO, error) {
 		ClientSecret:  cfgMap["tailscale_client_secret"],
 		WebhookSecret: cfgMap["tailscale_webhook_secret"],
 		ProxyURL:      cfgMap["tailscale_proxy_url"],
-		AuthKey:       cfgMap["tailscale_auth_key"],
-		NodeHostname:  hostname,
-		TsnetRunning:  tsproxy.GetTsnetManager().IsRunning(),
 	}, nil
 }
 
 // SaveConfig 保存连接配置
-func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret, webhookSecret, proxyURL, authKey, nodeHostname string) error {
+func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret, webhookSecret, proxyURL string) error {
 	if s.db == nil {
 		return fmt.Errorf("数据库连接不可用")
-	}
-
-	if nodeHostname == "" {
-		nodeHostname = "apeadmin-crm"
 	}
 
 	items := map[string]string{
@@ -90,8 +74,6 @@ func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret, w
 		"tailscale_client_secret":  clientSecret,
 		"tailscale_webhook_secret": webhookSecret,
 		"tailscale_proxy_url":      proxyURL,
-		"tailscale_auth_key":       authKey,
-		"tailscale_node_hostname":  nodeHostname,
 	}
 
 	for k, v := range items {
@@ -105,14 +87,6 @@ func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret, w
 				Value:    v,
 				IsPublic: false,
 			})
-		}
-	}
-
-	// 若配置了 AuthKey 或 ProxyURL 则自动激活通信引擎
-	if authKey != "" || proxyURL != "" {
-		_ = tsproxy.GetTsnetManager().Start(authKey, nodeHostname)
-		if proxyURL != "" {
-			tsproxy.GetTsnetManager().SetProxyURL(proxyURL)
 		}
 	}
 
@@ -462,17 +436,9 @@ func (s *TailscaleService) DiagnoseDevice(target string, port int, protocol stri
 	var err error
 	channel := "本地直连 (Direct Network)"
 
-	// 1. 优先尝试 tsnet 内存 WireGuard 原生拨号 (零外部代理依赖)
-	tsnetMgr := tsproxy.GetTsnetManager()
-	if tsnetMgr.IsRunning() {
-		channel = "tsnet 嵌入式 WireGuard 节点直连"
-		conn, err = tsnetMgr.DialTimeout("tcp", address, 3*time.Second)
-	}
-
-	// 2. 其次尝试配置的 SOCKS5 代理通道
-	if conn == nil {
-		cfg, _ := s.GetConfig()
-		if cfg != nil && cfg.ProxyURL != "" {
+	// 1. 尝试配置的 SOCKS5 代理通道
+	cfg, _ := s.GetConfig()
+	if cfg != nil && cfg.ProxyURL != "" {
 			if u, parseErr := url.Parse(cfg.ProxyURL); parseErr == nil && strings.HasPrefix(strings.ToLower(u.Scheme), "socks5") {
 				channel = fmt.Sprintf("SOCKS5 代理通道 (%s)", u.Host)
 				dialer, dialerErr := proxy.FromURL(u, proxy.Direct)
@@ -481,7 +447,6 @@ func (s *TailscaleService) DiagnoseDevice(target string, port int, protocol stri
 				}
 			}
 		}
-	}
 
 	// 3. 最后降级尝试宿主机物理网络直连
 	if conn == nil && err == nil {
@@ -506,11 +471,7 @@ func (s *TailscaleService) DiagnoseDevice(target string, port int, protocol stri
 		result["error"] = err.Error()
 		result["status"] = "unreachable"
 		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "no route") {
-			if !tsnetMgr.IsRunning() {
-				result["tip"] = "提示：云端容器无虚拟网卡。您已进入方案二架构：请在 [连接与代理配置] 填入或生成一个 Auth Key，系统将自动激活嵌入式 tsnet 节点，彻底打通内网！"
-			} else {
-				result["tip"] = "提示：tsnet 节点已建立组网，但目标节点未响应对应端口。请检查目标设备服务是否开启，或防火墙/ACL是否放行。"
-			}
+			result["tip"] = "提示：目标节点未响应对应端口。请检查目标设备服务是否开启，或防火墙是否放行。"
 		}
 	} else {
 		defer conn.Close()

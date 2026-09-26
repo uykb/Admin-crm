@@ -264,27 +264,11 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           </el-table>
         </el-tab-pane>
 
-        <!-- 标签页 5：连接与 tsnet 节点配置 (方案二) -->
-        <el-tab-pane label="连接与嵌入式节点配置" name="config">
-          <el-alert title="方案二：嵌入式 tsnet 用户态节点模式" type="success" :closable="false" show-icon style="margin-bottom: 15px;">
-            <template #default>
-              <div>只需填入一个预授权的 <b>Auth Key</b>，系统将直接在 Go 内存中拉起 WireGuard 组网引擎，云端容器无需任何系统权限即可实现内网直连与 Web-SSH 远程运维！</div>
-            </template>
-          </el-alert>
+        <!-- 标签页 5：连接配置 -->
+        <el-tab-pane label="连接配置" name="config">
           <el-form :model="configForm" label-width="160px" style="max-width: 700px;">
             <el-form-item label="Tailnet 名称">
               <el-input v-model="configForm.tailnet" placeholder="如: mytailnet.ts.net 或 user@github"></el-input>
-            </el-form-item>
-            <el-form-item label="嵌入式节点 AuthKey">
-              <el-input v-model="configForm.auth_key" type="password" show-password placeholder="tskey-auth-kxxxx (填入后自动激活方案二 tsnet 原生内网直连)"></el-input>
-            </el-form-item>
-            <el-form-item label="嵌入式节点名称">
-              <el-input v-model="configForm.node_hostname" placeholder="默认: apeadmin-crm"></el-input>
-            </el-form-item>
-            <el-form-item label="tsnet 运行状态">
-              <el-tag :type="configForm.tsnet_running ? 'success' : 'info'">
-                {{ configForm.tsnet_running ? '● tsnet 嵌入式节点运行中 (直连就绪)' : '○ 尚未激活 (需配置 AuthKey)' }}
-              </el-tag>
             </el-form-item>
             <el-divider content-position="left">API 管控凭证 (用于设备/ACL/密钥同步)</el-divider>
             <el-form-item label="API Key">
@@ -310,42 +294,6 @@ const TailscaleUIHTML = `<!DOCTYPE html>
       </el-tabs>
     </div>
 
-    <!-- Web-SSH 终端执行弹窗 (方案二) -->
-    <el-dialog v-model="sshDialogVisible" title="Web-SSH 远程运维终端 (tsnet 加密隧道直连)" width="680px">
-      <el-form :model="sshForm" label-width="90px">
-        <el-row :gutter="15">
-          <el-col :span="12">
-            <el-form-item label="目标主机">
-              <el-input v-model="sshForm.target" placeholder="100.x.x.x 或 MagicDNS"></el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="端口">
-              <el-input-number v-model="sshForm.port" :min="1" :max="65535" style="width: 100%;"></el-input-number>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="用户名">
-              <el-input v-model="sshForm.user" placeholder="root"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="登录密码">
-          <el-input v-model="sshForm.password" type="password" show-password placeholder="若节点开启 Tailscale SSH 免密可留空"></el-input>
-        </el-form-item>
-        <el-form-item label="执行命令">
-          <el-input v-model="sshForm.command" placeholder="如: uptime, uname -a, df -h, systemctl status docker" @keyup.enter="execSSH"></el-input>
-        </el-form-item>
-      </el-form>
-      <div v-if="sshOutput" style="margin-top: 10px;">
-        <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px; color: #4b5563;">终端输出 (Output):</div>
-        <div class="code-preview" style="max-height: 260px;">{{ sshOutput }}</div>
-      </div>
-      <template #footer>
-        <el-button @click="sshDialogVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="runningSSH" @click="execSSH">执行指令</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 诊断弹窗 -->
     <el-dialog v-model="diagDialogVisible" title="物联设备协议与端口连通性诊断" width="550px">
@@ -454,14 +402,10 @@ const TailscaleUIHTML = `<!DOCTYPE html>
 
         const webhookLogs = ref([]);
 
-        const configForm = reactive({ tailnet: '', api_key: '', client_id: '', client_secret: '', webhook_secret: '', proxy_url: '', auth_key: '', node_hostname: 'apeadmin-crm', tsnet_running: false });
+        const configForm = reactive({ tailnet: '', api_key: '', client_id: '', client_secret: '', webhook_secret: '', proxy_url: '' });
         const savingConfig = ref(false);
 
         // SSH 弹窗状态
-        const sshDialogVisible = ref(false);
-        const sshForm = reactive({ target: '', port: 22, user: 'root', password: '', command: 'uptime' });
-        const sshOutput = ref('');
-        const runningSSH = ref(false);
 
         // 弹窗状态
         const diagDialogVisible = ref(false);
@@ -885,7 +829,6 @@ const TailscaleUIHTML = `<!DOCTYPE html>
           aclContent, loadingACL, savingACL, loadACL, validateACL, saveACL, applyTemplate,
           webhookLogs, loadWebhookLogs,
           configForm, savingConfig, saveConfig,
-          sshDialogVisible, sshForm, sshOutput, runningSSH, openSSH, execSSH,
           diagDialogVisible, diagForm, diagResult, runningDiag, openQuickDiag, handlePresetChange, runDiagnose,
           renameDialogVisible, renameForm, openRename, submitRename,
           tagsDialogVisible, tagsForm, openTags, submitTags,
