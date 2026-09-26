@@ -45,7 +45,7 @@ func (h *TailscaleHandler) SaveConfig(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.SaveConfig(req.Tailnet, req.APIKey, req.ClientID, req.ClientSecret, req.WebhookSecret, req.ProxyURL); err != nil {
+	if err := h.svc.SaveConfig(req.Tailnet, req.APIKey, req.ClientID, req.ClientSecret, req.WebhookSecret, req.ProxyURL, req.AuthKey, req.NodeHostname); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "保存配置失败: "+err.Error()))
 		return
 	}
@@ -337,6 +337,36 @@ func (h *TailscaleHandler) ListWebhookLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(logs))
 }
 
+// ExecuteSSH 执行远程 SSH 命令 (方案二)
+func (h *TailscaleHandler) ExecuteSSH(c *gin.Context) {
+	var req struct {
+		Target   string `json:"target" binding:"required"`
+		Port     int    `json:"port"`
+		User     string `json:"user"`
+		Password string `json:"password"`
+		Command  string `json:"command" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数格式错误: "+err.Error()))
+		return
+	}
+
+	out, err := h.svc.ExecuteSSHCommand(req.Target, req.Port, req.User, req.Password, "", req.Command)
+	if err != nil {
+		c.JSON(http.StatusOK, response.Success(gin.H{
+			"status": "failed",
+			"output": out,
+			"error":  err.Error(),
+		}))
+		return
+	}
+
+	c.JSON(http.StatusOK, response.Success(gin.H{
+		"status": "success",
+		"output": out,
+	}))
+}
+
 // SetupRoutes 挂载路由
 func SetupRoutes(authed *gin.RouterGroup, public *gin.RouterGroup, handler *TailscaleHandler) {
 	if public != nil {
@@ -359,6 +389,7 @@ func SetupRoutes(authed *gin.RouterGroup, public *gin.RouterGroup, handler *Tail
 			api.GET("/devices/:id/routes", handler.GetDeviceRoutes)
 			api.POST("/devices/:id/routes", handler.ApproveRoutes)
 			api.POST("/diagnose", handler.DiagnoseDevice)
+			api.POST("/ssh/exec", handler.ExecuteSSH)
 			api.POST("/keys", handler.CreateAuthKey)
 			api.GET("/keys/logs", handler.ListKeyLogs)
 			api.DELETE("/keys/:id", handler.RevokeAuthKey)

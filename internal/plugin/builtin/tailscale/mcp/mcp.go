@@ -362,24 +362,65 @@ func RegisterTools(mgr *mcp.Manager, db *gorm.DB) {
 		},
 	})
 
-	// 9. 获取 ACL 策略工具 tailscale_get_acl (P3 安全策略)
+	// 10. 节点远程 SSH 执行命令工具 tailscale_ssh_exec (方案二: tsnet 原生隧道执行)
 	mgr.RegisterTool(&mcp.ToolEntry{
-		Name:        "tailscale_get_acl",
-		Description: "读取当前 Tailscale 网络的 ACL 安全访问控制策略 (HuJSON 格式)",
+		Name:        "tailscale_ssh_exec",
+		Description: "经由 Tailscale 原生加密隧道向内网或边缘 Linux/工控节点执行 SSH 维护诊断指令",
 		InputSchema: map[string]interface{}{
-			"type":       "object",
-			"properties": map[string]interface{}{},
+			"type": "object",
+			"properties": map[string]interface{}{
+				"target": map[string]interface{}{
+					"type":        "string",
+					"description": "目标设备 Tailscale 100.x IP 或 MagicDNS 域名",
+				},
+				"port": map[string]interface{}{
+					"type":        "integer",
+					"description": "SSH 端口（默认 22）",
+				},
+				"user": map[string]interface{}{
+					"type":        "string",
+					"description": "SSH 用户名（默认 root）",
+				},
+				"password": map[string]interface{}{
+					"type":        "string",
+					"description": "SSH 登录密码（若节点开启 Tailscale SSH 可留空）",
+				},
+				"command": map[string]interface{}{
+					"type":        "string",
+					"description": "待执行的 Linux Shell 命令（如 uname -a, df -h, systemctl status xxx 等）",
+				},
+			},
+			"required": []string{"target", "command"},
 		},
 		PluginName:          "tailscale",
 		Category:            "network",
-		RequiredPermissions: []string{"tailscale:config:edit"},
+		RequiredPermissions: []string{"tailscale:device:control"},
 		Handler: func(args map[string]interface{}) (interface{}, error) {
-			acl, err := svc.GetACL()
-			if err != nil {
-				return nil, fmt.Errorf("读取 ACL 策略失败: %w", err)
+			target, _ := args["target"].(string)
+			port := 22
+			if p, ok := args["port"].(float64); ok && p > 0 {
+				port = int(p)
+			} else if pInt, ok := args["port"].(int); ok && pInt > 0 {
+				port = pInt
 			}
+			user, _ := args["user"].(string)
+			password, _ := args["password"].(string)
+			command, _ := args["command"].(string)
+
+			output, err := svc.ExecuteSSHCommand(target, port, user, password, "", command)
+			if err != nil {
+				return map[string]interface{}{
+					"target": target,
+					"status": "failed",
+					"output": output,
+					"error":  err.Error(),
+				}, nil
+			}
+
 			return map[string]interface{}{
-				"acl_hujson": acl,
+				"target": target,
+				"status": "success",
+				"output": output,
 			}, nil
 		},
 	})
