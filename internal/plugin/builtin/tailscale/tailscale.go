@@ -78,10 +78,15 @@ func (p *TailscalePlugin) OnLoad() error {
 		netproxy.RegisterResolver(resolver)
 		log.Println("[Plugin:tailscale] 内网透明 HTTP 代理解析器已成功注册至系统底座")
 
-		// 自动检查并尝试唤醒 tsnet 嵌入式节点引擎
+		// 自动检查并尝试唤醒通信引擎
 		svc := tsservice.NewTailscaleService(db)
-		if cfg, err := svc.GetConfig(); err == nil && cfg != nil && cfg.AuthKey != "" {
-			_ = tsproxy.GetTsnetManager().Start(cfg.AuthKey, cfg.NodeHostname)
+		if cfg, err := svc.GetConfig(); err == nil && cfg != nil {
+			if cfg.AuthKey != "" || cfg.ProxyURL != "" {
+				_ = tsproxy.GetTsnetManager().Start(cfg.AuthKey, cfg.NodeHostname)
+				if cfg.ProxyURL != "" {
+					tsproxy.GetTsnetManager().SetProxyURL(cfg.ProxyURL)
+				}
+			}
 		}
 	}
 	log.Println("[Plugin:tailscale] 插件加载完成并在数据库登记")

@@ -107,9 +107,12 @@ func (s *TailscaleService) SaveConfig(tailnet, apiKey, clientID, clientSecret, w
 		}
 	}
 
-	// 若配置了 AuthKey 则自动拉起 tsnet 嵌入式节点引擎
-	if authKey != "" {
+	// 若配置了 AuthKey 或 ProxyURL 则自动激活通信引擎
+	if authKey != "" || proxyURL != "" {
 		_ = tsproxy.GetTsnetManager().Start(authKey, nodeHostname)
+		if proxyURL != "" {
+			tsproxy.GetTsnetManager().SetProxyURL(proxyURL)
+		}
 	}
 
 	return nil

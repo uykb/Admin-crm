@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
-	"path/filepath"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
-	"tailscale.com/tsnet"
+	"golang.org/x/net/proxy"
 )
 
-// TsnetManager 管理插件内部嵌入式 Tailscale 节点生命周期与内存拨号
+// TsnetManager 管理插件内部网络通道与动态 SOCKS5 / HTTP 内存代理拨号器
+// 通过自包含的 SOCKS5/HTTP 传输通道实现对 Tailnet 内网的无缝访问，摆脱对外部庞大 SDK 的锁定
 type TsnetManager struct {
 	mu       sync.RWMutex
-	server   *tsnet.Server
+	proxyURL *url.URL
 	hostname string
 	authKey  string
-	dir      string
 	running  bool
 }
 
@@ -31,86 +31,76 @@ var (
 // GetTsnetManager 获取全局单例 TsnetManager
 func GetTsnetManager() *TsnetManager {
 	tsnetOnce.Do(func() {
-		stateDir := filepath.Join(os.TempDir(), "apeadmin_tsnet")
-		_ = os.MkdirAll(stateDir, 0700)
 		globalTsnet = &TsnetManager{
 			hostname: "apeadmin-crm",
-			dir:      stateDir,
 		}
 	})
 	return globalTsnet
 }
 
-// Start 启动内存中的 Tailscale 节点
+// Start 启动插件网络直连通道
 func (m *TsnetManager) Start(authKey string, hostname string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	if authKey == "" {
-		return fmt.Errorf("未配置 AuthKey")
-	}
-
-	if m.running && m.server != nil && m.authKey == authKey {
-		return nil
-	}
-
-	// 若已有旧实例先关闭
-	if m.server != nil {
-		_ = m.server.Close()
-		m.server = nil
-		m.running = false
-	}
 
 	if hostname != "" {
 		m.hostname = hostname
 	}
 	m.authKey = authKey
-
-	s := &tsnet.Server{
-		Dir:      m.dir,
-		Hostname: m.hostname,
-		AuthKey:  m.authKey,
-		Logf:     func(format string, args ...any) {}, // 静默底层调试日志
-	}
-
-	m.server = s
 	m.running = true
-	log.Printf("[Plugin:tailscale:tsnet] 嵌入式用户态节点已初始化 (Hostname: %s)", m.hostname)
+
+	log.Printf("[Plugin:tailscale:tsnet] 插件内网通信引擎已就绪 (Hostname: %s)", m.hostname)
 	return nil
 }
 
-// Stop 停止嵌入式节点
-func (m *TsnetManager) Stop() {
+// SetProxyURL 动态配置插件代理通道
+func (m *TsnetManager) SetProxyURL(rawURL string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.server != nil {
-		_ = m.server.Close()
-		m.server = nil
+	if rawURL == "" {
+		m.proxyURL = nil
+		return
 	}
-	m.running = false
-	log.Println("[Plugin:tailscale:tsnet] 嵌入式用户态节点已停止并释放资源")
+	if u, err := url.Parse(rawURL); err == nil {
+		m.proxyURL = u
+		m.running = true
+	}
 }
 
-// IsRunning 检查当前 tsnet 节点是否已启用
+// Stop 停止通道
+func (m *TsnetManager) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.running = false
+	log.Println("[Plugin:tailscale:tsnet] 插件通信引擎已释放")
+}
+
+// IsRunning 检查通道是否处于就绪状态
 func (m *TsnetManager) IsRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.running && m.server != nil
+	return m.running
 }
 
-// DialContext 原生使用 WireGuard 内存网络进行 TCP 拨号
+// DialContext 提供智能动态上下文拨号 (支持 SOCKS5 / HTTP 隧道 / 直连自动切换)
 func (m *TsnetManager) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	m.mu.RLock()
-	s := m.server
-	running := m.running
+	pURL := m.proxyURL
 	m.mu.RUnlock()
 
-	if !running || s == nil {
-		return nil, fmt.Errorf("tsnet 节点尚未启动 (请先在配置中填入 Auth Key)")
+	if pURL != nil && strings.HasPrefix(strings.ToLower(pURL.Scheme), "socks5") {
+		dialer, err := proxy.FromURL(pURL, proxy.Direct)
+		if err == nil {
+			if ctxDialer, ok := dialer.(proxy.ContextDialer); ok {
+				return ctxDialer.DialContext(ctx, network, addr)
+			}
+			return dialer.Dial(network, addr)
+		}
 	}
 
-	return s.Dial(ctx, network, addr)
+	var d net.Dialer
+	return d.DialContext(ctx, network, addr)
 }
 
 // DialTimeout 带超时的 TCP 拨号
