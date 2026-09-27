@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"fmt"
 )
 
 type HikHandler struct {
@@ -258,9 +260,23 @@ func (h *HikHandler) DebugCalc(c *gin.Context) {
 	}
 	var existingResults []model.HkAttendanceResult
 	h.svc.GetDB().Where("date LIKE ? AND person_id = ?", month+"%", "CY017501913").Find(&existingResults)
+
+	// TEST INSERT
+	testRec := model.HkAttendanceResult{
+		PersonID:   "CY017501913",
+		PersonName: "罗宗青",
+		Date:       "2026-09-24",
+		ShiftType:  "测试",
+	}
+	errIns := h.svc.GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "person_id"}, {Name: "date"}},
+		DoUpdates: clause.AssignmentColumns([]string{"shift_type"}),
+	}).Create(&testRec).Error
+
 	c.JSON(200, gin.H{
 		"records": existingResults,
 		"logs":    service.DebugLogs,
+		"errIns":  fmt.Sprintf("%v", errIns),
 	})
 }
 

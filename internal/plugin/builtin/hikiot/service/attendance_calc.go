@@ -507,15 +507,35 @@ func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
 	records, errRec := cli.GetAttendanceRecords(dateStr, eDate)
 	logDebug("DEBUG CalculateSingleAttendance records count: %d, err: %v\n", len(records), errRec)
 
+	// 打印前3条记录的PersonID，帮助诊断
+	for i, r := range records {
+		if i >= 3 {
+			break
+		}
+		logDebug("DEBUG sample record[%d]: PersonID=%q PersonNo=%q ClockTime=%q\n", i, r.PersonID, r.PersonNo, r.ClockTime)
+	}
+
 	loc := time.FixedZone("CST", 8*3600)
 	if errRec == nil && len(records) > 0 {
 		var toCreate []model.HkAttendance
+		matched := 0
 		for _, r := range records {
-			if r.PersonID != personID && r.PersonNo != personID {
-				continue // 仅处理目标人员
+			// 宽松匹配：PersonID 或 PersonNo 包含目标ID
+			pID := r.PersonID
+			if pID == "" {
+				pID = r.PersonNo
 			}
+			if pID != personID {
+				continue
+			}
+			matched++
+			// 解析时间，兼容有秒/无秒格式
 			t, errParse := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
 			if errParse != nil {
+				t, errParse = time.ParseInLocation("2006-01-02 15:04", r.ClockTime, loc)
+			}
+			if errParse != nil || t.IsZero() {
+				logDebug("DEBUG parse failed ClockTime=%q\n", r.ClockTime)
 				continue
 			}
 			toCreate = append(toCreate, model.HkAttendance{
@@ -524,6 +544,7 @@ func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
 				ClockTime:  t,
 			})
 		}
+		logDebug("DEBUG CalculateSingleAttendance matched=%d toCreate=%d\n", matched, len(toCreate))
 		for _, v := range toCreate {
 			s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&v)
 		}
