@@ -179,6 +179,7 @@ func (p *HikPlugin) Register(pr *plugin.PluginRouter) error {
 		handler := hikapi.NewHikHandler(pr.DB)
 		pr.Public.GET("/hikiot/test-persons", handler.TestPersons)
 		pr.Public.GET("/hikiot/debug", handler.DebugCalc)
+		pr.Public.GET("/hikiot/matrix", handler.GetMatrixData)
 		// 暴露海康 Event 推送接收端（公有路由）
 		pr.Public.POST("/hikiot/event/callback", attendance.HandleHikiotEvent(pr.DB))
 	}
