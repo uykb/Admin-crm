@@ -172,7 +172,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	// 查出已被人工修改过的记录
 	manualMap := make(map[string]bool)
 	for _, r := range existingResults {
-		if r.IsManual {
+		if r.IsManual && r.ShiftType != "" && r.ShiftType != "异常" {
 			key := fmt.Sprintf("%s_%s", r.PersonID, r.Date)
 			manualMap[key] = true
 		}
@@ -344,7 +344,8 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 				// 检查原来是否已经有手工记录或正常记录
 				hasNormal := false
 				for _, er := range existingResults {
-					if er.PersonID == p.PersonID && er.Date == dateStr && (er.IsManual || er.ShiftType == "请假" || er.ShiftType == "休息") {
+					isValidManual := er.IsManual && er.ShiftType != "" && er.ShiftType != "异常"
+					if er.PersonID == p.PersonID && er.Date == dateStr && (isValidManual || er.ShiftType == "请假" || er.ShiftType == "休息") {
 						hasNormal = true
 						break
 					}
