@@ -394,7 +394,7 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 		err = s.db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "person_id"}, {Name: "date"}},
 			DoUpdates: clause.AssignmentColumns([]string{"shift_type", "first_clock", "last_clock", "remark", "updated_at"}),
-		}).Create(&resultsToSave).Error
+		}).CreateInBatches(&resultsToSave, 100).Error
 	}
 
 	return err
