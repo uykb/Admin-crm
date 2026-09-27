@@ -258,7 +258,10 @@ func (h *HikHandler) DebugCalc(c *gin.Context) {
 	}
 	var existingResults []model.HkAttendanceResult
 	h.svc.GetDB().Where("date LIKE ? AND person_name = ?", month+"%", "罗宗青").Find(&existingResults)
-	c.JSON(200, existingResults)
+	c.JSON(200, gin.H{
+		"records": existingResults,
+		"logs":    service.DebugLogs,
+	})
 }
 
 // SetupRoutes 挂载路由规则

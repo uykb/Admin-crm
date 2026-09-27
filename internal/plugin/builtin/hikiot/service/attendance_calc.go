@@ -11,6 +11,17 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var DebugLogs []string
+
+func logDebug(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	DebugLogs = append(DebugLogs, msg)
+	if len(DebugLogs) > 100 {
+		DebugLogs = DebugLogs[len(DebugLogs)-100:]
+	}
+	fmt.Println(msg)
+}
+
 // CalculateMonthlyAttendance 执行指定月份的智能考勤排班判定
 func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	return s.calculateAttendanceInternal(monthStr, false)
@@ -355,6 +366,9 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 					}
 				}
 				if !hasNormal {
+					if p.PersonID == "CY017501913" && (dateStr == "2026-09-23" || dateStr == "2026-09-24") {
+						logDebug("DEBUG inserting 休息 for 罗宗青 on %s\n", dateStr)
+					}
 					resultMap[key] = model.HkAttendanceResult{
 						PersonID:   p.PersonID,
 						PersonName: p.PersonName,
@@ -373,6 +387,8 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 	for _, v := range resultMap {
 		resultsToSave = append(resultsToSave, v)
 	}
+
+	logDebug("DEBUG calculateAttendanceInternal saving %d records. Ex: %v\n", len(resultsToSave), len(resultMap))
 
 	if len(resultsToSave) > 0 {
 		err = s.db.Clauses(clause.OnConflict{
@@ -489,6 +505,7 @@ func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
 		return errCli
 	}
 	records, errRec := cli.GetAttendanceRecords(dateStr, eDate)
+	logDebug("DEBUG CalculateSingleAttendance records count: %d, err: %v\n", len(records), errRec)
 
 	loc := time.FixedZone("CST", 8*3600)
 	if errRec == nil && len(records) > 0 {
