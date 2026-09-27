@@ -231,9 +231,10 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 					devName = r.Address
 				}
 
-				// 内存按姓名/工号条件过滤
+				// 内存按姓名/工号/成员编码条件过滤
 				if personName != "" {
-					if !strings.Contains(r.PersonName, personName) && !strings.Contains(jNo, personName) {
+					kw := strings.TrimSpace(personName)
+					if !strings.Contains(r.PersonName, kw) && !strings.Contains(jNo, kw) && !strings.Contains(pID, kw) && !strings.Contains(r.PersonID, kw) && !strings.Contains(r.PersonNo, kw) {
 						continue
 					}
 				}
@@ -282,7 +283,8 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 		Where("person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ?)", "BM54141022")
 
 	if personName != "" {
-		query = query.Where("person_name LIKE ?", "%"+personName+"%")
+		kw := "%" + strings.TrimSpace(personName) + "%"
+		query = query.Where("person_name LIKE ? OR job_no LIKE ? OR person_id LIKE ?", kw, kw, kw)
 	}
 	if startDate != "" {
 		t, err := time.Parse("2006-01-02", startDate)
