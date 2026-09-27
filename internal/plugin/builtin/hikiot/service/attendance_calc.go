@@ -13,6 +13,10 @@ import (
 
 // CalculateMonthlyAttendance 执行指定月份的智能考勤排班判定
 func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
+	return s.calculateAttendanceInternal(monthStr, false)
+}
+
+func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) error {
 	loc := time.FixedZone("CST", 8*3600)
 	monthStart, err := time.ParseInLocation("2006-01", monthStr, loc)
 	if err != nil {
@@ -22,7 +26,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	// 1. 找出当月存在的异常或缺失日期（截至今天）
 	var existingResults []model.HkAttendanceResult
 	s.db.Where("date LIKE ?", monthStr+"%").Find(&existingResults)
-	
+
 	// 获取部门人员
 	var allPersons []model.HkPerson
 	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
@@ -36,7 +40,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 
 	abnormalDates := make(map[string]bool)
 	todayStr := time.Now().In(loc).Format("2006-01-02")
-	
+
 	// 遍历当月每一天直到今天，检查是否有人考勤异常
 	for d := 1; d <= 31; d++ {
 		dateStr := fmt.Sprintf("%s-%02d", monthStr, d)
@@ -47,7 +51,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 		if _, err := time.Parse("2006-01-02", dateStr); err != nil {
 			continue
 		}
-		
+
 		isAbnormal := false
 		for _, p := range allPersons {
 			if !normalMap[p.PersonID+"_"+dateStr] {
@@ -62,10 +66,10 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 
 	var rawRecords []model.HkAttendance
 	cli, errCli := s.GetClient()
-	
+
 	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
 		toCreateMap := make(map[string]model.HkAttendance)
-		
+
 		// 找出 abnormalDates 中的最早和最晚日期，合并为单次或少量 API 请求
 		var minDate, maxDate string
 		for dateStr := range abnormalDates {
@@ -77,10 +81,10 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 			}
 		}
 
-		if minDate != "" && maxDate != "" {
+		if minDate != "" && maxDate != "" && !skipAPI {
 			tMax, _ := time.Parse("2006-01-02", maxDate)
 			eTime := tMax.AddDate(0, 0, 1).Format("2006-01-02")
-			
+
 			records, errRec := cli.GetAttendanceRecords(minDate, eTime)
 			if errRec == nil && len(records) > 0 {
 				for _, r := range records {
@@ -103,7 +107,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 					if devName == "" {
 						devName = r.Address
 					}
-					
+
 					// 智能映射验证方式
 					vMode := r.VerifyMode
 					if r.WayOfClock != "" {
@@ -132,7 +136,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 				}
 			}
 		}
-		
+
 		for _, v := range toCreateMap {
 			rawRecords = append(rawRecords, v)
 		}
@@ -464,17 +468,51 @@ func (s *HikService) UpdateAttendanceResult(personID, date, shiftType, remark st
 }
 
 // CalculateSingleAttendance 执行指定人员指定日期的独立核算
+
+// CalculateSingleAttendance 执行指定人员指定日期的独立核算
 func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
-	// 强制删除旧记录，使得它必然进入异常判定池
+	// 1. 删除人工锁或旧记录
 	err := s.db.Where("person_id = ? AND date = ?", personID, dateStr).Delete(&model.HkAttendanceResult{}).Error
 	if err != nil {
 		return err
 	}
-	// 调用该月的智能核算，会自动拉取并重算
-	if len(dateStr) >= 7 {
-		monthStr := dateStr[:7]
-		return s.CalculateMonthlyAttendance(monthStr)
-	}
-	return nil
-}
 
+	// 2. 从海康接口拉取该日的原始打卡（拉取该日和次日）
+	tDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return err
+	}
+	eDate := tDate.AddDate(0, 0, 1).Format("2006-01-02")
+
+	cli, errCli := s.GetClient()
+	if errCli != nil {
+		return errCli
+	}
+	records, errRec := cli.GetAttendanceRecords(dateStr, eDate)
+
+	loc := time.FixedZone("CST", 8*3600)
+	if errRec == nil && len(records) > 0 {
+		var toCreate []model.HkAttendance
+		for _, r := range records {
+			if r.PersonID != personID && r.PersonNo != personID {
+				continue // 仅处理目标人员
+			}
+			t, errParse := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
+			if errParse != nil {
+				continue
+			}
+			toCreate = append(toCreate, model.HkAttendance{
+				PersonID:   personID,
+				PersonName: r.PersonName,
+				ClockTime:  t,
+			})
+		}
+		for _, v := range toCreate {
+			s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&v)
+		}
+	}
+
+	// 3. 执行本地的轻量级核算算法（跳过API请求）
+	monthStr := dateStr[:7]
+	return s.calculateAttendanceInternal(monthStr, true)
+}
