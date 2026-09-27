@@ -257,7 +257,7 @@ func (h *HikHandler) DebugCalc(c *gin.Context) {
 		month = time.Now().Format("2006-01")
 	}
 	var existingResults []model.HkAttendanceResult
-	h.svc.GetDB().Where("date LIKE ? AND person_name = ?", month+"%", "罗宗青").Find(&existingResults)
+	h.svc.GetDB().Where("date LIKE ? AND person_id = ?", month+"%", "CY017501913").Find(&existingResults)
 	c.JSON(200, gin.H{
 		"records": existingResults,
 		"logs":    service.DebugLogs,
