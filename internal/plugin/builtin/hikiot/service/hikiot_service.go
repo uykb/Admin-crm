@@ -333,7 +333,7 @@ func (s *HikService) SyncOrgs() (int, error) {
 	return 0, nil
 }
 
-// SyncPersons 手动同步人员档案（纯真实数据，指定部门 BM54141022）
+// SyncPersons 手动/自动同步人员档案（指定部门 BM54141022，清理离职/跨部门陈旧数据）
 func (s *HikService) SyncPersons() (int, error) {
 	// 清理历史 Mock 沙箱数据
 	s.db.Exec("DELETE FROM hk_person WHERE person_id LIKE 'P800%'")
@@ -343,6 +343,7 @@ func (s *HikService) SyncPersons() (int, error) {
 		persons, err := cli.GetPersons()
 		if err == nil {
 			count := 0
+			var activePersonIDs []string
 			for _, dto := range persons {
 				id := dto.GetID()
 				name := dto.GetName()
@@ -365,8 +366,19 @@ func (s *HikService) SyncPersons() (int, error) {
 					Columns:   []clause.Column{{Name: "person_id"}},
 					DoUpdates: clause.AssignmentColumns([]string{"person_name", "job_no", "phone_no", "org_index_code", "org_name", "updated_at"}),
 				}).Create(&item).Error
-				count++
+
+				// 仅收集属于 BM54141022 部门的人员 ID
+				if orgCode == "BM54141022" || strings.HasPrefix(orgCode, "BM54141022") {
+					activePersonIDs = append(activePersonIDs, id)
+					count++
+				}
 			}
+
+			// 清理本地数据库中已从 BM54141022 移出或调岗/离职的陈旧人员记录
+			if len(activePersonIDs) > 0 {
+				s.db.Where("org_index_code = ? AND person_id NOT IN (?)", "BM54141022", activePersonIDs).Delete(&hkmodel.HkPerson{})
+			}
+
 			return count, nil
 		}
 	}

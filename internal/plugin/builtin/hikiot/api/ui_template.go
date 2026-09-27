@@ -132,6 +132,9 @@ const HikUIHTML = `<!DOCTYPE html>
             <el-button type="primary" :loading="calculatingMatrix" @click="calculateMatrix">
               <el-icon><cpu /></el-icon> 一键智能排班判定
             </el-button>
+            <el-button type="success" :loading="syncingPersons" @click="syncPersons" style="margin-left:8px;">
+              <el-icon><user /></el-icon> 同步部门人员
+            </el-button>
             <el-button type="danger" :loading="clearingResults" @click="clearResults" style="margin-left:8px;">
               <el-icon><delete /></el-icon> 清空核算数据
             </el-button>
@@ -339,6 +342,27 @@ const HikUIHTML = `<!DOCTYPE html>
           calculatingMatrix.value = false;
         };
 
+        const syncingPersons = Vue.ref(false);
+        const syncPersons = async () => {
+          syncingPersons.value = true;
+          try {
+            const res = await fetch('/api/v1/hikiot/sync/persons', {
+              method: 'POST',
+              headers: getAuthHeader()
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('人员同步成功，共 ' + (json.data || 0) + ' 人');
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '同步失败');
+            }
+          } catch(e) {
+            ElementPlus.ElMessage.error('同步请求异常');
+          }
+          await loadMatrix();
+          syncingPersons.value = false;
+        };
+
         const clearingResults = Vue.ref(false);
         const clearResults = async () => {
           if (!matrixMonth.value) return;
@@ -470,7 +494,7 @@ const HikUIHTML = `<!DOCTYPE html>
           attendance, loadingAtt, attQuery, loadAttendance,
           loadDoors, syncDoors, controlDoor,
           matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
-          clearingResults, clearResults,
+          clearingResults, clearResults, syncingPersons, syncPersons,
           handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack, calculatingSingle, calculateSingle
         };
       }
