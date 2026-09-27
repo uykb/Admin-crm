@@ -413,3 +413,4 @@ func (s *HikService) ListOrgs() ([]hkmodel.HkOrg, error) {
 	}
 	return list, err
 }
+func (s *HikService) GetDB() *gorm.DB { return s.db }

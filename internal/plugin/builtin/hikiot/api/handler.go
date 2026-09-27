@@ -231,6 +231,16 @@ func (h *HikHandler) UpdateMatrixResult(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success("更新成功"))
 }
 
+func (h *HikHandler) DebugCalc(c *gin.Context) {
+	month := c.Query("month")
+	if month == "" {
+		month = time.Now().Format("2006-01")
+	}
+	var existingResults []model.HkAttendanceResult
+	h.svc.GetDB().Where("date LIKE ? AND person_name = ?", month+"%", "罗宗青").Find(&existingResults)
+	c.JSON(200, existingResults)
+}
+
 // SetupRoutes 挂载路由规则
 func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 	api := group.Group("/hikiot")
@@ -250,6 +260,7 @@ func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 		api.POST("/sync/orgs", handler.SyncOrgs)
 		api.POST("/sync/persons", handler.SyncPersons)
 		api.GET("/attendance/matrix", handler.GetMatrixData)
+		api.GET("/matrix/debug_calc", handler.DebugCalc)
 		api.POST("/attendance/calculate", handler.CalculateMatrix)
 		api.PUT("/attendance/result", handler.UpdateMatrixResult)
 	}
