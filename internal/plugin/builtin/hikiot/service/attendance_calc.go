@@ -147,13 +147,14 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 			}
 		}
 
-		// 先把 API 拉到的数据批量写入 hk_attendance（ON CONFLICT 忽略重复）
-		for _, v := range toCreateMap {
-			s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&v)
+		// 先把 API 拉到的数据批量写入 hk_attendance（ON CONFLICT 忽略重复，分批高效写入）
+		if len(toCreateMap) > 0 {
+			var toCreateList []model.HkAttendance
+			for _, v := range toCreateMap {
+				toCreateList = append(toCreateList, v)
+			}
+			s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&toCreateList, 100)
 		}
-
-		// 确保人员信息也是最新的
-		_, _ = s.SyncPersons()
 	}
 
 	// 统一从数据库读取本月全量打卡流水（无论 API 是否有数据，DB 才是完整的数据源）
@@ -543,8 +544,8 @@ func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
 			})
 		}
 		logDebug("DEBUG CalculateSingleAttendance matched=%d toCreate=%d\n", matched, len(toCreate))
-		for _, v := range toCreate {
-			s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&v)
+		if len(toCreate) > 0 {
+			s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&toCreate, 100)
 		}
 	}
 

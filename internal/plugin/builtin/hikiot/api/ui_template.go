@@ -329,11 +329,13 @@ const HikUIHTML = `<!DOCTYPE html>
             const json = await res.json();
             if (json.code === 200) {
               ElementPlus.ElMessage.success('计算完成');
-              await loadMatrix();
             } else {
               ElementPlus.ElMessage.error(json.msg || '计算失败');
             }
-          } catch(e) {}
+          } catch(e) {
+            ElementPlus.ElMessage.error('计算请求异常或超时，正在刷新界面数据...');
+          }
+          await loadMatrix();
           calculatingMatrix.value = false;
         };
 
@@ -356,11 +358,13 @@ const HikUIHTML = `<!DOCTYPE html>
             const json = await res.json();
             if (json.code === 200) {
               ElementPlus.ElMessage.success(json.data || '清空成功');
-              await loadMatrix();
             } else {
               ElementPlus.ElMessage.error(json.msg || '清空失败');
             }
-          } catch(e) {}
+          } catch(e) {
+            ElementPlus.ElMessage.error('请求异常');
+          }
+          await loadMatrix();
           clearingResults.value = false;
         };
 
