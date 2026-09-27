@@ -168,6 +168,9 @@ func (p *HikPlugin) Register(pr *plugin.PluginRouter) error {
 		if err := pr.DB.AutoMigrate(hikmodel.AllModels()...); err != nil {
 			log.Printf("[Plugin:hikiot] 自动迁移表结构失败: %v", err)
 		}
+		// 补建联合唯一索引（AutoMigrate 不会给已有表添加新索引）
+		pr.DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_person_date ON hk_attendance_result (person_id, date)`)
+		log.Printf("[Plugin:hikiot] 已确保 idx_person_date 索引存在")
 	}
 
 	// 2. 挂载 HTTP 路由
