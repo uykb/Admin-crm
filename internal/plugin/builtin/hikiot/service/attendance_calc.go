@@ -66,14 +66,22 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
 		toCreateMap := make(map[string]model.HkAttendance)
 		
-		// 仅针对异常的日期去向海康 API 发起精准请求（大幅节省接口调用量）
+		// 找出 abnormalDates 中的最早和最晚日期，合并为单次或少量 API 请求
+		var minDate, maxDate string
 		for dateStr := range abnormalDates {
-			sTime := dateStr
-			// 对于异常的当天，必须把下一天的数据也拉过来，防止“夜班”跨天导致的缺卡误判
-			tDate, _ := time.Parse("2006-01-02", dateStr)
-			eTime := tDate.AddDate(0, 0, 1).Format("2006-01-02")
+			if minDate == "" || dateStr < minDate {
+				minDate = dateStr
+			}
+			if maxDate == "" || dateStr > maxDate {
+				maxDate = dateStr
+			}
+		}
+
+		if minDate != "" && maxDate != "" {
+			tMax, _ := time.Parse("2006-01-02", maxDate)
+			eTime := tMax.AddDate(0, 0, 1).Format("2006-01-02")
 			
-			records, errRec := cli.GetAttendanceRecords(sTime, eTime)
+			records, errRec := cli.GetAttendanceRecords(minDate, eTime)
 			if errRec == nil && len(records) > 0 {
 				for _, r := range records {
 					t, _ := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
