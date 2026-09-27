@@ -410,6 +410,284 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 	return err
 }
 
+// CalculateRangeAttendance 按指定日期区间（如 2026-09-01 ~ 2026-09-05）执行分段智能排班判定
+func (s *HikService) CalculateRangeAttendance(startDateStr, endDateStr string) error {
+	loc := time.FixedZone("CST", 8*3600)
+	tStart, err := time.ParseInLocation("2006-01-02", startDateStr, loc)
+	if err != nil {
+		return fmt.Errorf("开始日期格式错误: %v", err)
+	}
+	tEnd, err := time.ParseInLocation("2006-01-02", endDateStr, loc)
+	if err != nil {
+		return fmt.Errorf("结束日期格式错误: %v", err)
+	}
+
+	cli, errCli := s.GetClient()
+	if errCli == nil && cli.AppKey != "" {
+		toCreateMap := make(map[string]model.HkAttendance)
+		eTime := tEnd.AddDate(0, 0, 1).Format("2006-01-02")
+		records, errRec := cli.GetAttendanceRecords(startDateStr, eTime)
+		if errRec == nil && len(records) > 0 {
+			for _, r := range records {
+				t, _ := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
+				if t.IsZero() {
+					t, _ = time.ParseInLocation("2006-01-02 15:04", r.ClockTime, loc)
+				}
+				if t.IsZero() {
+					continue
+				}
+				pID := r.PersonNo
+				if pID == "" {
+					pID = r.PersonID
+				}
+				jNo := r.JobNumber
+				if jNo == "" {
+					jNo = r.JobNo
+				}
+				devName := r.DeviceName
+				if devName == "" {
+					devName = r.Address
+				}
+				vMode := r.VerifyMode
+				if r.WayOfClock != "" {
+					if strings.Contains(r.WayOfClock, "脸") {
+						vMode = 1
+					} else if strings.Contains(r.WayOfClock, "卡") {
+						vMode = 2
+					} else if strings.Contains(r.WayOfClock, "指纹") {
+						vMode = 3
+					} else {
+						vMode = 1
+					}
+				} else if vMode == 0 {
+					vMode = 1
+				}
+
+				key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
+				toCreateMap[key] = model.HkAttendance{
+					PersonID:   pID,
+					PersonName: r.PersonName,
+					JobNo:      jNo,
+					ClockTime:  t,
+					DoorName:   devName,
+					VerifyMode: vMode,
+				}
+			}
+		}
+
+		if len(toCreateMap) > 0 {
+			var toCreateList []model.HkAttendance
+			for _, v := range toCreateMap {
+				toCreateList = append(toCreateList, v)
+			}
+			s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&toCreateList, 100)
+		}
+	}
+
+	queryStart := tStart.AddDate(0, 0, -1)
+	queryEnd := tEnd.AddDate(0, 0, 2)
+	var rawRecords []model.HkAttendance
+	_ = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ?)", queryStart, queryEnd, "BM54141022").
+		Order("person_id ASC, clock_time ASC").
+		Find(&rawRecords).Error
+
+	var allPersons []model.HkPerson
+	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
+
+	personRecords := make(map[string][]model.HkAttendance)
+	personNames := make(map[string]string)
+	personJobs := make(map[string]string)
+	for _, r := range rawRecords {
+		personRecords[r.PersonID] = append(personRecords[r.PersonID], r)
+		if r.PersonName != "" {
+			personNames[r.PersonID] = r.PersonName
+		}
+		if r.JobNo != "" {
+			personJobs[r.PersonID] = r.JobNo
+		}
+	}
+
+	for _, p := range allPersons {
+		if _, ok := personNames[p.PersonID]; !ok {
+			personNames[p.PersonID] = p.PersonName
+			personJobs[p.PersonID] = p.JobNo
+		}
+	}
+
+	var existingResults []model.HkAttendanceResult
+	s.db.Where("date >= ? AND date <= ?", startDateStr, endDateStr).Find(&existingResults)
+	manualMap := make(map[string]bool)
+	for _, r := range existingResults {
+		if r.IsManual && r.ShiftType != "" && r.ShiftType != "异常" {
+			manualMap[r.PersonID+"_"+r.Date] = true
+		}
+	}
+
+	resultMap := make(map[string]model.HkAttendanceResult)
+	for pID, recs := range personRecords {
+		type Session struct {
+			First time.Time
+			Last  time.Time
+		}
+		var sessions []Session
+		var cur *Session
+
+		for _, r := range recs {
+			if cur == nil {
+				cur = &Session{First: r.ClockTime, Last: r.ClockTime}
+			} else {
+				if r.ClockTime.Sub(cur.First) > 16*time.Hour {
+					sessions = append(sessions, *cur)
+					cur = &Session{First: r.ClockTime, Last: r.ClockTime}
+				} else {
+					cur.Last = r.ClockTime
+				}
+			}
+		}
+		if cur != nil {
+			sessions = append(sessions, *cur)
+		}
+
+		for _, sess := range sessions {
+			t1 := sess.First
+			t2 := sess.Last
+			dur := t2.Sub(t1)
+			h1 := t1.Hour()
+
+			var dateStr string
+			if h1 >= 4 && h1 < 16 {
+				dateStr = t1.Format("2006-01-02")
+			} else {
+				if h1 < 4 {
+					dateStr = t1.AddDate(0, 0, -1).Format("2006-01-02")
+				} else {
+					dateStr = t1.Format("2006-01-02")
+				}
+			}
+
+			if dateStr < startDateStr || dateStr > endDateStr {
+				continue
+			}
+
+			if manualMap[pID+"_"+dateStr] {
+				continue
+			}
+
+			shiftType := "异常"
+			remark := ""
+
+			if t1.Equal(t2) {
+				shiftType = "异常"
+				remark = "仅单次打卡"
+			} else if dur < 4*time.Hour {
+				shiftType = "异常"
+				remark = "打卡间隔<4小时"
+			} else if h1 >= 4 && h1 < 16 {
+				if t1.Format("15:04:05") <= "08:30:00" && t2.Format("15:04:05") >= "19:30:00" {
+					shiftType = "白班"
+				} else if dur >= 8*time.Hour {
+					shiftType = "白班"
+					if t1.Format("15:04:05") > "08:30:00" {
+						remark = "迟到"
+					} else if t2.Format("15:04:05") < "19:30:00" {
+						remark = "早退"
+					}
+				} else {
+					shiftType = "异常"
+					remark = "工时不足"
+				}
+			} else {
+				if t1.Format("15:04:05") <= "20:30:00" && (t2.Format("15:04:05") >= "07:30:00" || t2.Day() != t1.Day()) && dur >= 8*time.Hour {
+					shiftType = "夜班"
+				} else if dur >= 8*time.Hour {
+					shiftType = "夜班"
+				} else {
+					shiftType = "异常"
+					remark = "工时不足"
+				}
+			}
+
+			newRes := model.HkAttendanceResult{
+				PersonID:   pID,
+				PersonName: personNames[pID],
+				JobNo:      personJobs[pID],
+				Date:       dateStr,
+				ShiftType:  shiftType,
+				FirstClock: t1.Format("2006-01-02 15:04:05"),
+				LastClock:  t2.Format("2006-01-02 15:04:05"),
+				IsManual:   false,
+				Remark:     remark,
+			}
+
+			key := pID + "_" + dateStr
+			if old, exists := resultMap[key]; exists {
+				if (newRes.ShiftType == "白班" || newRes.ShiftType == "夜班") && old.ShiftType == "异常" {
+					resultMap[key] = newRes
+				} else if old.ShiftType == "异常" && newRes.ShiftType == "异常" {
+					if newRes.FirstClock < old.FirstClock {
+						old.FirstClock = newRes.FirstClock
+					}
+					if newRes.LastClock > old.LastClock {
+						old.LastClock = newRes.LastClock
+					}
+					resultMap[key] = old
+				}
+			} else {
+				resultMap[key] = newRes
+			}
+		}
+	}
+
+	todayStrLimit := time.Now().In(loc).Format("2006-01-02")
+	existingMap := make(map[string]model.HkAttendanceResult)
+	for _, er := range existingResults {
+		existingMap[er.PersonID+"_"+er.Date] = er
+	}
+
+	for _, p := range allPersons {
+		curDate, _ := time.Parse("2006-01-02", startDateStr)
+		for !curDate.After(tEnd) {
+			dateStr := curDate.Format("2006-01-02")
+			curDate = curDate.AddDate(0, 0, 1)
+
+			if dateStr >= todayStrLimit {
+				break
+			}
+			key := p.PersonID + "_" + dateStr
+			if _, exists := resultMap[key]; !exists {
+				if er, found := existingMap[key]; found {
+					validShift := er.ShiftType != "" && er.ShiftType != "异常" && er.ShiftType != "缺卡"
+					if validShift {
+						continue
+					}
+				}
+				resultMap[key] = model.HkAttendanceResult{
+					PersonID:   p.PersonID,
+					PersonName: p.PersonName,
+					JobNo:      p.JobNo,
+					Date:       dateStr,
+					ShiftType:  "休息",
+					IsManual:   false,
+					Remark:     "智能判定无打卡",
+				}
+			}
+		}
+	}
+
+	var resultsToSave []model.HkAttendanceResult
+	for _, v := range resultMap {
+		resultsToSave = append(resultsToSave, v)
+	}
+
+	if len(resultsToSave) > 0 {
+		return s.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "person_id"}, {Name: "date"}},
+			DoUpdates: clause.AssignmentColumns([]string{"shift_type", "first_clock", "last_clock", "remark", "updated_at"}),
+		}).CreateInBatches(&resultsToSave, 100).Error
+	}
+	return nil
+}
+
 // MatrixRow 前端矩阵单行结构
 type MatrixRow struct {
 	PersonID   string                              `json:"person_id"`

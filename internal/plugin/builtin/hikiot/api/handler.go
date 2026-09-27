@@ -295,10 +295,29 @@ func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 		api.GET("/attendance/matrix", handler.GetMatrixData)
 		api.GET("/matrix/debug_calc", handler.DebugCalc)
 		api.POST("/attendance/calculate", handler.CalculateMatrix)
+		api.POST("/attendance/calculate_range", handler.CalculateRangeMatrix)
 		api.POST("/attendance/calculate_single", handler.CalculateSingleMatrix)
 		api.PUT("/attendance/result", handler.UpdateMatrixResult)
 		api.DELETE("/attendance/results", handler.ClearResults)
 	}
+}
+
+// CalculateRangeMatrix 分段执行考勤判定
+func (h *HikHandler) CalculateRangeMatrix(c *gin.Context) {
+	var req struct {
+		StartDate string `json:"start_date" binding:"required"`
+		EndDate   string `json:"end_date" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	err := h.svc.CalculateRangeAttendance(req.StartDate, req.EndDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "分段核算失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success("分段核算完成"))
 }
 
 // ClearResults 清空指定月份的考勤核算结果（用于重置后全量重算）

@@ -197,6 +197,15 @@ const HikUIHTML = `<!DOCTYPE html>
           </span>
         </template>
       </el-dialog>
+
+      <!-- 智能判定分段进度弹窗 -->
+      <el-dialog title="一键智能排班判定中" v-model="progressVisible" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" width="420px">
+        <div style="text-align: center; padding: 20px 0;">
+          <el-progress type="circle" :percentage="calcPercent" status="success" :stroke-width="10" :width="140"></el-progress>
+          <div style="margin-top: 20px; font-size: 15px; font-weight: bold; color: #409EFF;">{{ calcStatusText }}</div>
+          <div style="margin-top: 8px; font-size: 12px; color: #909399;">正在分段请求海康 API 并执行智能会话判定...</div>
+        </div>
+      </el-dialog>
     </div>
   </div>
 
@@ -320,26 +329,58 @@ const HikUIHTML = `<!DOCTYPE html>
           loadingMatrix.value = false;
         };
 
+        const progressVisible = Vue.ref(false);
+        const calcPercent = Vue.ref(0);
+        const calcStatusText = Vue.ref('');
+
         const calculateMatrix = async () => {
           if (!matrixMonth.value) return;
           calculatingMatrix.value = true;
+          progressVisible.value = true;
+          calcPercent.value = 0;
+          calcStatusText.value = '准备开始分段判定...';
+
           try {
-            const res = await fetch('/api/v1/hikiot/attendance/calculate', {
-              method: 'POST',
-              headers: getAuthHeader(),
-              body: JSON.stringify({ month: matrixMonth.value })
-            });
-            const json = await res.json();
-            if (json.code === 200) {
-              ElementPlus.ElMessage.success('计算完成');
-            } else {
-              ElementPlus.ElMessage.error(json.msg || '计算失败');
+            const yearMonth = matrixMonth.value; // "2026-09"
+            const parts = yearMonth.split('-');
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            const totalDays = new Date(year, month, 0).getDate();
+
+            const chunks = [];
+            const chunkSize = 5;
+            for (let d = 1; d <= totalDays; d += chunkSize) {
+              const startDay = d;
+              const endDay = Math.min(d + chunkSize - 1, totalDays);
+              const startStr = yearMonth + '-' + (startDay < 10 ? '0' + startDay : String(startDay));
+              const endStr = yearMonth + '-' + (endDay < 10 ? '0' + endDay : String(endDay));
+              chunks.push({ startStr, endStr, startDay, endDay });
             }
+
+            for (let i = 0; i < chunks.length; i++) {
+              const c = chunks[i];
+              calcStatusText.value = '正在核算: ' + c.startDay + '日 ~ ' + c.endDay + '日';
+              
+              const res = await fetch('/api/v1/hikiot/attendance/calculate_range', {
+                method: 'POST',
+                headers: getAuthHeader(),
+                body: JSON.stringify({ start_date: c.startStr, end_date: c.endStr })
+              });
+              const json = await res.json();
+              if (json.code !== 200) {
+                ElementPlus.ElMessage.warning('区间 ' + c.startStr + ' 响应: ' + (json.msg || '未知'));
+              }
+              calcPercent.value = Math.round(((i + 1) / chunks.length) * 100);
+            }
+
+            ElementPlus.ElMessage.success('一键智能排班判定全量完成！');
           } catch(e) {
-            ElementPlus.ElMessage.error('计算请求异常或超时，正在刷新界面数据...');
+            ElementPlus.ElMessage.error('判定过程异常: ' + e);
+          } finally {
+            progressVisible.value = false;
+            calculatingMatrix.value = false;
+            await loadMatrix();
           }
-          await loadMatrix();
-          calculatingMatrix.value = false;
         };
 
         const syncingPersons = Vue.ref(false);
@@ -495,6 +536,7 @@ const HikUIHTML = `<!DOCTYPE html>
           loadDoors, syncDoors, controlDoor,
           matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
           clearingResults, clearResults, syncingPersons, syncPersons,
+          progressVisible, calcPercent, calcStatusText,
           handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack, calculatingSingle, calculateSingle
         };
       }
