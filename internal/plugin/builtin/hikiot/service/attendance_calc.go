@@ -92,56 +92,67 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 		}
 
 		if minDate != "" && maxDate != "" && !skipAPI {
+			tMin, _ := time.Parse("2006-01-02", minDate)
 			tMax, _ := time.Parse("2006-01-02", maxDate)
-			eTime := tMax.AddDate(0, 0, 1).Format("2006-01-02")
+			targetEnd := tMax.AddDate(0, 0, 1)
 
-			records, errRec := cli.GetAttendanceRecords(minDate, eTime)
-			if errRec == nil && len(records) > 0 {
-				for _, r := range records {
-					t, _ := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
-					if t.IsZero() {
-						t, _ = time.ParseInLocation("2006-01-02 15:04", r.ClockTime, loc)
-					}
-					if t.IsZero() {
-						continue
-					}
-					pID := r.PersonNo
-					if pID == "" {
-						pID = r.PersonID
-					}
-					jNo := r.JobNumber
-					if jNo == "" {
-						jNo = r.JobNo
-					}
-					devName := r.DeviceName
-					if devName == "" {
-						devName = r.Address
-					}
+			// 按 3 天分段拉取 API，防止海康 API 单次查询 2000 条限制导致前半月数据被截断
+			for cur := tMin; cur.Before(targetEnd); cur = cur.AddDate(0, 0, 3) {
+				chunkEnd := cur.AddDate(0, 0, 3)
+				if chunkEnd.After(targetEnd) {
+					chunkEnd = targetEnd
+				}
+				sBegin := cur.Format("2006-01-02")
+				sEnd := chunkEnd.Format("2006-01-02")
 
-					// 智能映射验证方式
-					vMode := r.VerifyMode
-					if r.WayOfClock != "" {
-						if strings.Contains(r.WayOfClock, "脸") {
-							vMode = 1
-						} else if strings.Contains(r.WayOfClock, "卡") {
-							vMode = 2
-						} else if strings.Contains(r.WayOfClock, "指纹") {
-							vMode = 3
-						} else {
+				records, errRec := cli.GetAttendanceRecords(sBegin, sEnd)
+				if errRec == nil && len(records) > 0 {
+					for _, r := range records {
+						t, _ := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
+						if t.IsZero() {
+							t, _ = time.ParseInLocation("2006-01-02 15:04", r.ClockTime, loc)
+						}
+						if t.IsZero() {
+							continue
+						}
+						pID := r.PersonNo
+						if pID == "" {
+							pID = r.PersonID
+						}
+						jNo := r.JobNumber
+						if jNo == "" {
+							jNo = r.JobNo
+						}
+						devName := r.DeviceName
+						if devName == "" {
+							devName = r.Address
+						}
+
+						// 智能映射验证方式
+						vMode := r.VerifyMode
+						if r.WayOfClock != "" {
+							if strings.Contains(r.WayOfClock, "脸") {
+								vMode = 1
+							} else if strings.Contains(r.WayOfClock, "卡") {
+								vMode = 2
+							} else if strings.Contains(r.WayOfClock, "指纹") {
+								vMode = 3
+							} else {
+								vMode = 1
+							}
+						} else if vMode == 0 {
 							vMode = 1
 						}
-					} else if vMode == 0 {
-						vMode = 1
-					}
 
-					key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
-					toCreateMap[key] = model.HkAttendance{
-						PersonID:   pID,
-						PersonName: r.PersonName,
-						JobNo:      jNo,
-						ClockTime:  t,
-						DoorName:   devName,
-						VerifyMode: vMode,
+						key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
+						toCreateMap[key] = model.HkAttendance{
+							PersonID:   pID,
+							PersonName: r.PersonName,
+							JobNo:      jNo,
+							ClockTime:  t,
+							DoorName:   devName,
+							VerifyMode: vMode,
+						}
 					}
 				}
 			}
