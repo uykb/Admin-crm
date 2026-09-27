@@ -81,7 +81,6 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
 		toCreateMap := make(map[string]model.HkAttendance)
 
-		// 找出 abnormalDates 中的最早和最晚日期，合并为单次或少量 API 请求
 		var minDate, maxDate string
 		for dateStr := range abnormalDates {
 			if minDate == "" || dateStr < minDate {
@@ -148,20 +147,18 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 			}
 		}
 
+		// 先把 API 拉到的数据批量写入 hk_attendance（ON CONFLICT 忽略重复）
 		for _, v := range toCreateMap {
-			rawRecords = append(rawRecords, v)
+			s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&v)
 		}
-		// 按时间升序排序
-		sort.Slice(rawRecords, func(i, j int) bool {
-			return rawRecords[i].ClockTime.Before(rawRecords[j].ClockTime)
-		})
 
 		// 确保人员信息也是最新的
 		_, _ = s.SyncPersons()
 	}
 
-	// 2. 备用方案：如果 API 无数据，退回到从本地数据库拉取历史全量考勤流水（兼容离线模式）
-	if len(rawRecords) == 0 {
+	// 统一从数据库读取本月全量打卡流水（无论 API 是否有数据，DB 才是完整的数据源）
+	// 这样可以避免 API 分页导致数据不完整的问题
+	{
 		queryStart := monthStart.AddDate(0, 0, -1)
 		queryEnd := monthStart.AddDate(0, 1, 2)
 		_ = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ?)", queryStart, queryEnd, "BM54141022").
