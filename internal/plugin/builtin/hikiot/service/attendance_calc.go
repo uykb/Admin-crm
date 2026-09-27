@@ -139,8 +139,8 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 		}
 
 		if minDate != "" && maxDate != "" && !skipAPI {
-			tMin, _ := time.Parse("2006-01-02", minDate)
-			tMax, _ := time.Parse("2006-01-02", maxDate)
+			tMin, _ := time.ParseInLocation("2006-01-02", minDate, loc)
+			tMax, _ := time.ParseInLocation("2006-01-02", maxDate, loc)
 			targetEnd := tMax.AddDate(0, 0, 1)
 
 			// 按 3 天分段拉取 API，防止海康 API 单次查询 2000 条限制导致前半月数据被截断
@@ -687,7 +687,7 @@ func (s *HikService) CalculateRangeAttendance(startDateStr, endDateStr string) e
 	}
 
 	for _, p := range allPersons {
-		curDate, _ := time.Parse("2006-01-02", startDateStr)
+		curDate, _ := time.ParseInLocation("2006-01-02", startDateStr, loc)
 		for !curDate.After(tEnd) {
 			dateStr := curDate.Format("2006-01-02")
 			curDate = curDate.AddDate(0, 0, 1)
@@ -823,8 +823,8 @@ func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
 		return err
 	}
 
-	// 2. 从海康接口拉取该日的原始打卡（拉取该日和次日）
-	tDate, err := time.Parse("2006-01-02", dateStr)
+	loc := time.FixedZone("CST", 8*3600)
+	tDate, err := time.ParseInLocation("2006-01-02", dateStr, loc)
 	if err != nil {
 		return err
 	}
@@ -845,7 +845,6 @@ func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
 		logDebug("DEBUG sample record[%d]: PersonID=%q PersonNo=%q ClockTime=%q\n", i, r.PersonID, r.PersonNo, r.ClockTime)
 	}
 
-	loc := time.FixedZone("CST", 8*3600)
 	if errRec == nil && len(records) > 0 {
 		var toCreate []model.HkAttendance
 		matched := 0
