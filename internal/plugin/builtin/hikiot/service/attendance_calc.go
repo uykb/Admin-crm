@@ -345,6 +345,12 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 
 	// 补齐没有任何打卡记录的历史天数，自动置为“休息”，防止下次继续当做异常请求API
 	todayStrLimit := time.Now().In(loc).Format("2006-01-02")
+	// 建一个快查 map，避免 O(n²) 扫描
+	existingMap := make(map[string]model.HkAttendanceResult)
+	for _, er := range existingResults {
+		k := er.PersonID + "_" + er.Date
+		existingMap[k] = er
+	}
 	for _, p := range allPersons {
 		for d := 1; d <= 31; d++ {
 			dateStr := fmt.Sprintf("%s-%02d", monthStr, d)
@@ -356,28 +362,22 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 			}
 			key := fmt.Sprintf("%s_%s", p.PersonID, dateStr)
 			if _, exists := resultMap[key]; !exists {
-				// 检查原来是否已经有手工记录或正常记录
-				hasNormal := false
-				for _, er := range existingResults {
-					isValidManual := er.IsManual && er.ShiftType != "" && er.ShiftType != "异常"
-					if er.PersonID == p.PersonID && er.Date == dateStr && (isValidManual || er.ShiftType == "请假" || er.ShiftType == "休息") {
-						hasNormal = true
-						break
+				// 如果数据库已经有任意非"异常"/"缺卡"/"空白"/"" 的记录（无论是否手工），则不覆盖
+				if er, found := existingMap[key]; found {
+					validShift := er.ShiftType != "" && er.ShiftType != "异常" && er.ShiftType != "缺卡"
+					if validShift {
+						// 保留原记录，不插入"休息"
+						continue
 					}
 				}
-				if !hasNormal {
-					if p.PersonID == "CY017501913" && (dateStr == "2026-09-23" || dateStr == "2026-09-24") {
-						logDebug("DEBUG inserting 休息 for 罗宗青 on %s\n", dateStr)
-					}
-					resultMap[key] = model.HkAttendanceResult{
-						PersonID:   p.PersonID,
-						PersonName: p.PersonName,
-						JobNo:      p.JobNo,
-						Date:       dateStr,
-						ShiftType:  "休息", // 标记为休息，停止对该日期的 API 轮询
-						IsManual:   false,
-						Remark:     "智能判定无打卡",
-					}
+				resultMap[key] = model.HkAttendanceResult{
+					PersonID:   p.PersonID,
+					PersonName: p.PersonName,
+					JobNo:      p.JobNo,
+					Date:       dateStr,
+					ShiftType:  "休息", // 智能判定无打卡
+					IsManual:   false,
+					Remark:     "智能判定无打卡",
 				}
 			}
 		}

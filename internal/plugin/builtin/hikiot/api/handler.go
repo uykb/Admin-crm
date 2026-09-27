@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"apeadmin-gin/internal/pkg/response"
@@ -10,8 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-	"fmt"
 )
 
 type HikHandler struct {
@@ -258,25 +257,20 @@ func (h *HikHandler) DebugCalc(c *gin.Context) {
 	if month == "" {
 		month = time.Now().Format("2006-01")
 	}
+
+	// 如果传了 clean=true，清除本月所有 remark="智能判定无打卡" 的错误休息记录
+	if c.Query("clean") == "true" {
+		res := h.svc.GetDB().Where("date LIKE ? AND remark = ?", month+"%", "智能判定无打卡").Delete(&model.HkAttendanceResult{})
+		c.JSON(200, gin.H{"cleaned": res.RowsAffected, "err": fmt.Sprintf("%v", res.Error)})
+		return
+	}
+
 	var existingResults []model.HkAttendanceResult
 	h.svc.GetDB().Where("date LIKE ? AND person_id = ?", month+"%", "CY017501913").Find(&existingResults)
-
-	// TEST INSERT
-	testRec := model.HkAttendanceResult{
-		PersonID:   "CY017501913",
-		PersonName: "罗宗青",
-		Date:       "2026-09-24",
-		ShiftType:  "测试",
-	}
-	errIns := h.svc.GetDB().Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "person_id"}, {Name: "date"}},
-		DoUpdates: clause.AssignmentColumns([]string{"shift_type"}),
-	}).Create(&testRec).Error
 
 	c.JSON(200, gin.H{
 		"records": existingResults,
 		"logs":    service.DebugLogs,
-		"errIns":  fmt.Sprintf("%v", errIns),
 	})
 }
 
