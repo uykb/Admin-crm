@@ -132,6 +132,9 @@ const HikUIHTML = `<!DOCTYPE html>
             <el-button type="primary" :loading="calculatingMatrix" @click="calculateMatrix">
               <el-icon><cpu /></el-icon> 一键智能排班判定
             </el-button>
+            <el-button type="danger" :loading="clearingResults" @click="clearResults" style="margin-left:8px;">
+              <el-icon><delete /></el-icon> 清空核算数据
+            </el-button>
           </el-form-item>
         </el-form>
 
@@ -334,6 +337,33 @@ const HikUIHTML = `<!DOCTYPE html>
           calculatingMatrix.value = false;
         };
 
+        const clearingResults = Vue.ref(false);
+        const clearResults = async () => {
+          if (!matrixMonth.value) return;
+          try {
+            await ElementPlus.ElMessageBox.confirm(
+              '确定要清空 ' + matrixMonth.value + ' 月的全部核算数据吗?清空后需重新点击一键智能排班判定。',
+              '清空核算数据',
+              { confirmButtonText: '确定清空', cancelButtonText: '取消', type: 'warning' }
+            );
+          } catch(e) { return; }
+          clearingResults.value = true;
+          try {
+            const res = await fetch('/api/v1/hikiot/attendance/results?month=' + matrixMonth.value, {
+              method: 'DELETE',
+              headers: getAuthHeader(),
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success(json.data || '清空成功');
+              await loadMatrix();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '清空失败');
+            }
+          } catch(e) {}
+          clearingResults.value = false;
+        };
+
         const handleCellClick = (row, day) => {
           editForm.personId = row.person_id;
           editForm.personName = row.person_name;
@@ -436,6 +466,7 @@ const HikUIHTML = `<!DOCTYPE html>
           attendance, loadingAtt, attQuery, loadAttendance,
           loadDoors, syncDoors, controlDoor,
           matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
+          clearingResults, clearResults,
           handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack, calculatingSingle, calculateSingle
         };
       }

@@ -297,5 +297,20 @@ func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 		api.POST("/attendance/calculate", handler.CalculateMatrix)
 		api.POST("/attendance/calculate_single", handler.CalculateSingleMatrix)
 		api.PUT("/attendance/result", handler.UpdateMatrixResult)
+		api.DELETE("/attendance/results", handler.ClearResults)
 	}
+}
+
+// ClearResults 清空指定月份的考勤核算结果（用于重置后全量重算）
+func (h *HikHandler) ClearResults(c *gin.Context) {
+	month := c.Query("month")
+	if month == "" {
+		month = time.Now().Format("2006-01")
+	}
+	res := h.svc.GetDB().Where("date LIKE ?", month+"%").Delete(&model.HkAttendanceResult{})
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, fmt.Sprintf("清空失败: %v", res.Error)))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(fmt.Sprintf("已清空 %d 条核算记录", res.RowsAffected)))
 }

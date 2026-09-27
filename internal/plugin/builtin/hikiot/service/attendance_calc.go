@@ -344,13 +344,26 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 	}
 
 	// 补齐没有任何打卡记录的历史天数，自动置为“休息”，防止下次继续当做异常请求API
+	// 补齐没有任何打卡记录的历史天数
 	todayStrLimit := time.Now().In(loc).Format("2006-01-02")
-	// 建一个快查 map，避免 O(n²) 扫描
+	// 快查 map：数据库已有结果
 	existingMap := make(map[string]model.HkAttendanceResult)
 	for _, er := range existingResults {
-		k := er.PersonID + "_" + er.Date
-		existingMap[k] = er
+		existingMap[er.PersonID+"_"+er.Date] = er
 	}
+	// 快查 map：当天是否有原始打卡记录（任意一次打卡不应判为"休息"）
+	hasPunch := make(map[string]bool)
+	for _, r := range records {
+		h := r.ClockTime.In(loc).Hour()
+		var punchDate string
+		if h < 4 {
+			punchDate = r.ClockTime.In(loc).AddDate(0, 0, -1).Format("2006-01-02")
+		} else {
+			punchDate = r.ClockTime.In(loc).Format("2006-01-02")
+		}
+		hasPunch[r.PersonID+"_"+punchDate] = true
+	}
+
 	for _, p := range allPersons {
 		for d := 1; d <= 31; d++ {
 			dateStr := fmt.Sprintf("%s-%02d", monthStr, d)
@@ -362,22 +375,34 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 			}
 			key := fmt.Sprintf("%s_%s", p.PersonID, dateStr)
 			if _, exists := resultMap[key]; !exists {
-				// 如果数据库已经有任意非"异常"/"缺卡"/"空白"/"" 的记录（无论是否手工），则不覆盖
+				// 已有有效非异常记录，不覆盖
 				if er, found := existingMap[key]; found {
 					validShift := er.ShiftType != "" && er.ShiftType != "异常" && er.ShiftType != "缺卡"
 					if validShift {
-						// 保留原记录，不插入"休息"
 						continue
 					}
 				}
-				resultMap[key] = model.HkAttendanceResult{
-					PersonID:   p.PersonID,
-					PersonName: p.PersonName,
-					JobNo:      p.JobNo,
-					Date:       dateStr,
-					ShiftType:  "休息", // 智能判定无打卡
-					IsManual:   false,
-					Remark:     "智能判定无打卡",
+				// 有打卡 → 异常；无打卡 → 休息
+				if hasPunch[key] {
+					resultMap[key] = model.HkAttendanceResult{
+						PersonID:   p.PersonID,
+						PersonName: p.PersonName,
+						JobNo:      p.JobNo,
+						Date:       dateStr,
+						ShiftType:  "异常",
+						IsManual:   false,
+						Remark:     "有打卡记录但无法判定班次",
+					}
+				} else {
+					resultMap[key] = model.HkAttendanceResult{
+						PersonID:   p.PersonID,
+						PersonName: p.PersonName,
+						JobNo:      p.JobNo,
+						Date:       dateStr,
+						ShiftType:  "休息",
+						IsManual:   false,
+						Remark:     "智能判定无打卡",
+					}
 				}
 			}
 		}
