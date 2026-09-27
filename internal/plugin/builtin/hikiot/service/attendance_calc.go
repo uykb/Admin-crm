@@ -344,26 +344,14 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 	}
 
 	// 补齐没有任何打卡记录的历史天数，自动置为“休息”，防止下次继续当做异常请求API
-	// 补齐没有任何打卡记录的历史天数
+	// 补齐没有任何打卡记录的历史天数，自动置为"休息"
+	// 说明：凡走到这里的 (person, date)，在主会话算法里没有产生任何归属记录，
+	// 即真正无打卡（夜班工人次日 08:00 的下班卡已被归属到前一日的夜班会话，不会误计入本日）。
 	todayStrLimit := time.Now().In(loc).Format("2006-01-02")
-	// 快查 map：数据库已有结果
 	existingMap := make(map[string]model.HkAttendanceResult)
 	for _, er := range existingResults {
 		existingMap[er.PersonID+"_"+er.Date] = er
 	}
-	// 快查 map：当天是否有原始打卡记录（任意一次打卡不应判为"休息"）
-	hasPunch := make(map[string]bool)
-	for _, r := range records {
-		h := r.ClockTime.In(loc).Hour()
-		var punchDate string
-		if h < 4 {
-			punchDate = r.ClockTime.In(loc).AddDate(0, 0, -1).Format("2006-01-02")
-		} else {
-			punchDate = r.ClockTime.In(loc).Format("2006-01-02")
-		}
-		hasPunch[r.PersonID+"_"+punchDate] = true
-	}
-
 	for _, p := range allPersons {
 		for d := 1; d <= 31; d++ {
 			dateStr := fmt.Sprintf("%s-%02d", monthStr, d)
@@ -382,27 +370,15 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 						continue
 					}
 				}
-				// 有打卡 → 异常；无打卡 → 休息
-				if hasPunch[key] {
-					resultMap[key] = model.HkAttendanceResult{
-						PersonID:   p.PersonID,
-						PersonName: p.PersonName,
-						JobNo:      p.JobNo,
-						Date:       dateStr,
-						ShiftType:  "异常",
-						IsManual:   false,
-						Remark:     "有打卡记录但无法判定班次",
-					}
-				} else {
-					resultMap[key] = model.HkAttendanceResult{
-						PersonID:   p.PersonID,
-						PersonName: p.PersonName,
-						JobNo:      p.JobNo,
-						Date:       dateStr,
-						ShiftType:  "休息",
-						IsManual:   false,
-						Remark:     "智能判定无打卡",
-					}
+				// 走到这里说明本日无任何归属打卡 → 休息
+				resultMap[key] = model.HkAttendanceResult{
+					PersonID:   p.PersonID,
+					PersonName: p.PersonName,
+					JobNo:      p.JobNo,
+					Date:       dateStr,
+					ShiftType:  "休息",
+					IsManual:   false,
+					Remark:     "智能判定无打卡",
 				}
 			}
 		}
