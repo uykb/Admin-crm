@@ -268,9 +268,13 @@ func (h *HikHandler) DebugCalc(c *gin.Context) {
 	var existingResults []model.HkAttendanceResult
 	h.svc.GetDB().Where("date LIKE ? AND person_id = ?", month+"%", "CY017501913").Find(&existingResults)
 
+	var rawPunches []model.HkAttendance
+	h.svc.GetDB().Where("clock_time >= ? AND clock_time < ? AND (person_id = ? OR person_name = ?)", month+"-01 00:00:00", month+"-31 23:59:59", "CY017501913", "罗宗青").Order("clock_time ASC").Find(&rawPunches)
+
 	c.JSON(200, gin.H{
-		"records": existingResults,
-		"logs":    service.DebugLogs,
+		"records":    existingResults,
+		"rawPunches": rawPunches,
+		"logs":       service.DebugLogs,
 	})
 }
 
