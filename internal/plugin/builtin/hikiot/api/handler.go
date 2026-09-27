@@ -5,6 +5,8 @@ import (
 
 	"apeadmin-gin/internal/pkg/response"
 	"apeadmin-gin/internal/plugin/builtin/hikiot/service"
+	"apeadmin-gin/internal/plugin/builtin/hikiot/model"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -211,6 +213,24 @@ func (h *HikHandler) GetMatrixData(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(data))
 }
 
+// CalculateSingleMatrix 单独重新核算个人某一天的考勤
+func (h *HikHandler) CalculateSingleMatrix(c *gin.Context) {
+	var req struct {
+		PersonID string `json:"person_id" binding:"required"`
+		Date     string `json:"date" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	err := h.svc.CalculateSingleAttendance(req.PersonID, req.Date)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "单日核算失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success("单日核算完成"))
+}
+
 // UpdateMatrixResult 手工覆盖排班结果
 func (h *HikHandler) UpdateMatrixResult(c *gin.Context) {
 	var req struct {
@@ -262,6 +282,7 @@ func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 		api.GET("/attendance/matrix", handler.GetMatrixData)
 		api.GET("/matrix/debug_calc", handler.DebugCalc)
 		api.POST("/attendance/calculate", handler.CalculateMatrix)
+		api.POST("/attendance/calculate_single", handler.CalculateSingleMatrix)
 		api.PUT("/attendance/result", handler.UpdateMatrixResult)
 	}
 }

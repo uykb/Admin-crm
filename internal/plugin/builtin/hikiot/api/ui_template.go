@@ -185,6 +185,7 @@ const HikUIHTML = `<!DOCTYPE html>
         </el-form>
         <template #footer>
           <span class="dialog-footer">
+            <el-button type="warning" :loading="calculatingSingle" @click="calculateSingle" style="float: left;">重新核算</el-button>
             <el-button @click="editDialogVisible = false">取消</el-button>
             <el-button type="primary" :loading="savingEdit" @click="saveEdit">保存</el-button>
           </span>
@@ -367,6 +368,32 @@ const HikUIHTML = `<!DOCTYPE html>
           savingEdit.value = false;
         };
 
+        const calculatingSingle = ref(false);
+        const calculateSingle = async () => {
+          calculatingSingle.value = true;
+          try {
+            const res = await fetch('/api/v1/hikiot/attendance/calculate_single', {
+              method: 'POST',
+              headers: getAuthHeader(),
+              body: JSON.stringify({
+                person_id: editForm.personId,
+                date: editForm.date
+              })
+            });
+            const json = await res.json();
+            if (json.code === 200) {
+              ElementPlus.ElMessage.success('单日核算完成');
+              editDialogVisible.value = false;
+              await loadMatrix();
+            } else {
+              ElementPlus.ElMessage.error(json.msg || '单日核算失败');
+            }
+          } catch(e) {
+            ElementPlus.ElMessage.error('请求异常');
+          }
+          calculatingSingle.value = false;
+        };
+
         onMounted(() => {
           const syncTheme = () => {
             try {
@@ -409,7 +436,7 @@ const HikUIHTML = `<!DOCTYPE html>
           attendance, loadingAtt, attQuery, loadAttendance,
           loadDoors, syncDoors, controlDoor,
           matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
-          handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack
+          handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack, calculatingSingle, calculateSingle
         };
       }
     });

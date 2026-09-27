@@ -462,3 +462,19 @@ func (s *HikService) UpdateAttendanceResult(personID, date, shiftType, remark st
 	res.IsManual = true
 	return s.db.Save(&res).Error
 }
+
+// CalculateSingleAttendance 执行指定人员指定日期的独立核算
+func (s *HikService) CalculateSingleAttendance(personID, dateStr string) error {
+	// 强制删除旧记录，使得它必然进入异常判定池
+	err := s.db.Where("person_id = ? AND date = ?", personID, dateStr).Delete(&model.HkAttendanceResult{}).Error
+	if err != nil {
+		return err
+	}
+	// 调用该月的智能核算，会自动拉取并重算
+	if len(dateStr) >= 7 {
+		monthStr := dateStr[:7]
+		return s.CalculateMonthlyAttendance(monthStr)
+	}
+	return nil
+}
+
