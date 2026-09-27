@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"log"
 
+	"apeadmin-gin/internal/attendance"
 	"apeadmin-gin/internal/core"
 	"apeadmin-gin/internal/dal"
 	"apeadmin-gin/internal/model"
 	"apeadmin-gin/internal/plugin"
-	"apeadmin-gin/internal/attendance"
 	hikapi "apeadmin-gin/internal/plugin/builtin/hikiot/api"
 	hikmcp "apeadmin-gin/internal/plugin/builtin/hikiot/mcp"
 	hikmodel "apeadmin-gin/internal/plugin/builtin/hikiot/model"
@@ -178,6 +178,7 @@ func (p *HikPlugin) Register(pr *plugin.PluginRouter) error {
 	if pr.Public != nil {
 		handler := hikapi.NewHikHandler(pr.DB)
 		pr.Public.GET("/hikiot/test-persons", handler.TestPersons)
+		pr.Public.GET("/hikiot/debug", handler.DebugCalc)
 		// 暴露海康 Event 推送接收端（公有路由）
 		pr.Public.POST("/hikiot/event/callback", attendance.HandleHikiotEvent(pr.DB))
 	}

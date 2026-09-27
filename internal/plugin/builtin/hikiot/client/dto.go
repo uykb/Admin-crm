@@ -39,7 +39,7 @@ type BaseResponse struct {
 // AppTokenData 海康互联 AppToken 数据
 type AppTokenData struct {
 	AppKey          string `json:"appKey"`
-	AppAccessToken string `json:"appAccessToken"`
+	AppAccessToken  string `json:"appAccessToken"`
 	ExpiresIn       int    `json:"expiresIn"`
 	RefreshAppToken string `json:"refreshAppToken"`
 }
@@ -244,21 +244,21 @@ type DoorControlParam struct {
 
 // AttendanceRecordDTO 考勤打卡记录
 type AttendanceRecordDTO struct {
-	PersonNo        string `json:"personNo"`
-	PersonID        string `json:"personId"`
-	PersonName      string `json:"personName"`
-	JobNumber       string `json:"jobNumber"`
-	JobNo           string `json:"jobNo"`
-	DepartmentName  string `json:"departmentName"`
-	DepartmentNo    string `json:"departmentNo"`
-	AttendanceDate  string `json:"attendanceDate"`
-	Workday         string `json:"workday"`
-	ClockTime       string `json:"clockTime"`
-	DeviceSerial    string `json:"deviceSerial"`
-	DeviceName      string `json:"deviceName"`
-	Address         string `json:"address"`
-	VerifyMode      int    `json:"verifyMode"`
-	WayOfClock      string `json:"wayOfClock"`
+	PersonNo       string `json:"personNo"`
+	PersonID       string `json:"personId"`
+	PersonName     string `json:"personName"`
+	JobNumber      string `json:"jobNumber"`
+	JobNo          string `json:"jobNo"`
+	DepartmentName string `json:"departmentName"`
+	DepartmentNo   string `json:"departmentNo"`
+	AttendanceDate string `json:"attendanceDate"`
+	Workday        string `json:"workday"`
+	ClockTime      string `json:"clockTime"`
+	DeviceSerial   string `json:"deviceSerial"`
+	DeviceName     string `json:"deviceName"`
+	Address        string `json:"address"`
+	VerifyMode     int    `json:"verifyMode"`
+	WayOfClock     string `json:"wayOfClock"`
 }
 
 // PageResponse 分页查询数据结构

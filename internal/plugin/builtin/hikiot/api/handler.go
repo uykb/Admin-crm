@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"apeadmin-gin/internal/pkg/response"
-	"apeadmin-gin/internal/plugin/builtin/hikiot/service"
 	"apeadmin-gin/internal/plugin/builtin/hikiot/model"
+	"apeadmin-gin/internal/plugin/builtin/hikiot/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -269,7 +269,7 @@ func SetupRoutes(group *gin.RouterGroup, handler *HikHandler) {
 		api.GET("/ui_doors", handler.RenderUI)
 		api.GET("/ui_records", handler.RenderUI)
 		api.GET("/ui_matrix", handler.RenderUI)
-		
+
 		api.GET("/config", handler.GetConfig)
 		api.POST("/config", handler.SaveConfig)
 		api.GET("/doors", handler.ListDoors)

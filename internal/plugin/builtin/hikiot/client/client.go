@@ -226,7 +226,6 @@ func (c *Client) GetOrgs() ([]OrgDTO, error) {
 func (c *Client) GetPersons() ([]PersonDTO, error) {
 	departNos := []string{"BM54141022"} // 只针对指定部门
 
-
 	allPersonsMap := make(map[string]PersonDTO)
 	var lastErr error
 	pageSize := 50 // 遵循文档：每页数量最大值50
@@ -322,7 +321,7 @@ func (c *Client) GetPersons() ([]PersonDTO, error) {
 // GetDoors 查询门禁设备列表（海康互联云端）
 func (c *Client) GetDoors() ([]DoorDTO, error) {
 	var resp BaseResponse
-	
+
 	// 首先尝试门禁资源专用接口
 	err := c.DoRequest("GET", "/device/acs/v1/doorList", nil, &resp)
 	if err != nil {
@@ -377,25 +376,25 @@ func (c *Client) GetDoors() ([]DoorDTO, error) {
 // ControlDoor 远程控门指令（海康互联云端）
 func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 	var resp BaseResponse
-	
+
 	// 智能推断真实的 deviceSerial 和 resourceSerial
 	deviceSerial := doorIndexCode
 	resourceSerial := doorIndexCode
-	
+
 	if idx := strings.Index(doorIndexCode, "-"); idx > 0 {
 		deviceSerial = doorIndexCode[:idx]
 	} else {
 		// 没有后缀说明是旧款的纯设备序列号，门资源序列号通常需要加上 -1 后缀
 		resourceSerial = doorIndexCode + "-1"
 	}
-	
+
 	// 注意：新版云端接口为 GET 请求
 	params := map[string]interface{}{
 		"resourceSerial": resourceSerial, // 文档请求参数表格中的标准名称
 		"deviceSerial":   deviceSerial,   // 文档调用示例中的名称
 		"doorNo":         1,
 	}
-	
+
 	err := c.DoRequest("GET", "/issue/v1/device/openDoor", params, &resp)
 	if err != nil {
 		// 降级尝试底层设备控制 POST 接口
@@ -407,7 +406,7 @@ func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 		} else if command == 3 {
 			cmdStr = "alwaysClose"
 		}
-		
+
 		errV1 := c.DoRequest("POST", "/device/direct/v1/doorControl/remoteControlDoor", map[string]interface{}{
 			"deviceSerial": deviceSerial,
 			"payload": map[string]interface{}{
@@ -417,7 +416,7 @@ func (c *Client) ControlDoor(doorIndexCode string, command int) error {
 				"controlType": "monitor",
 			},
 		}, &resp)
-		
+
 		if errV1 != nil {
 			return err
 		}
@@ -520,7 +519,7 @@ func (c *Client) ExchangeAppToken() (*AppTokenData, error) {
 	var resp struct {
 		Code FlexibleCode `json:"code"`
 		Msg  string       `json:"msg"`
-		Data AppTokenData  `json:"data"`
+		Data AppTokenData `json:"data"`
 	}
 
 	payload := map[string]interface{}{

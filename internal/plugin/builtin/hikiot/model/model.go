@@ -74,12 +74,12 @@ type HkAttendanceResult struct {
 	PersonID   string    `gorm:"type:varchar(64);uniqueIndex:idx_person_date;not null" json:"person_id"`
 	PersonName string    `gorm:"type:varchar(64);not null" json:"person_name"`
 	JobNo      string    `gorm:"type:varchar(64)" json:"job_no"`
-	Date       string    `gorm:"type:varchar(32);uniqueIndex:idx_person_date;not null" json:"date"`        // YYYY-MM-DD (归属日期)
-	ShiftType  string    `gorm:"type:varchar(32);not null" json:"shift_type"`        // 白班, 夜班, 异常, 空白, 请假, 休息
-	FirstClock string    `gorm:"type:varchar(32)" json:"first_clock"`                // 首次打卡时间 2006-01-02 15:04:05
-	LastClock  string    `gorm:"type:varchar(32)" json:"last_clock"`                 // 末次打卡时间 2006-01-02 15:04:05
-	IsManual   bool      `gorm:"default:false" json:"is_manual"`                     // 是否人工修改过
-	Remark     string    `gorm:"type:varchar(255)" json:"remark"`                    // 备注
+	Date       string    `gorm:"type:varchar(32);uniqueIndex:idx_person_date;not null" json:"date"` // YYYY-MM-DD (归属日期)
+	ShiftType  string    `gorm:"type:varchar(32);not null" json:"shift_type"`                       // 白班, 夜班, 异常, 空白, 请假, 休息
+	FirstClock string    `gorm:"type:varchar(32)" json:"first_clock"`                               // 首次打卡时间 2006-01-02 15:04:05
+	LastClock  string    `gorm:"type:varchar(32)" json:"last_clock"`                                // 末次打卡时间 2006-01-02 15:04:05
+	IsManual   bool      `gorm:"default:false" json:"is_manual"`                                    // 是否人工修改过
+	Remark     string    `gorm:"type:varchar(255)" json:"remark"`                                   // 备注
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
