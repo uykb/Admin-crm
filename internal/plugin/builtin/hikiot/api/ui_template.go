@@ -120,8 +120,8 @@ const HikUIHTML = `<!DOCTYPE html>
 
         <el-table :data="attendance" stripe v-loading="loadingAtt" style="width: 100%;">
           <template #empty><el-empty description="暂无打卡数据，请尝试切换日期"></el-empty></template>
-          <el-table-column prop="job_no" label="工号/成员编号" width="130"></el-table-column>
-          <el-table-column prop="person_name" label="姓名" width="120"></el-table-column>
+          <el-table-column prop="job_no" label="编码" width="100"></el-table-column>
+          <el-table-column prop="person_name" label="姓名" width="100"></el-table-column>
           <el-table-column prop="door_name" label="通行门禁位置"></el-table-column>
           <el-table-column label="打卡方式" width="130">
             <template #default="scope">
@@ -161,8 +161,8 @@ const HikUIHTML = `<!DOCTYPE html>
 
         <el-table :data="matrixData" stripe v-loading="loadingMatrix" style="width: 100%;" border>
           <template #empty><el-empty description="暂无排班数据，请点击一键智能判定"></el-empty></template>
-          <el-table-column prop="person_name" label="姓名" width="90" fixed="left"></el-table-column>
-          <el-table-column prop="job_no" label="成员编号" width="110" fixed="left"></el-table-column>
+          <el-table-column prop="person_name" label="姓名" width="70" fixed="left" align="center"></el-table-column>
+          <el-table-column prop="job_no" label="编码" width="75" fixed="left" align="center"></el-table-column>
           
           <el-table-column v-for="day in daysInMonth" :key="day.num" width="55" align="center">
             <template #header>
