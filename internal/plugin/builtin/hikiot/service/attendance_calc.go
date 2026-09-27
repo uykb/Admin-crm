@@ -13,7 +13,7 @@ import (
 
 // CalculateMonthlyAttendance 执行指定月份的智能考勤排班判定
 func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
-	loc := time.Local
+	loc := time.FixedZone("CST", 8*3600)
 	monthStart, err := time.ParseInLocation("2006-01", monthStr, loc)
 	if err != nil {
 		return fmt.Errorf("月份格式错误，应为 YYYY-MM")
@@ -35,7 +35,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	}
 
 	abnormalDates := make(map[string]bool)
-	todayStr := time.Now().Format("2006-01-02")
+	todayStr := time.Now().In(loc).Format("2006-01-02")
 	
 	// 遍历当月每一天直到今天，检查是否有人考勤异常
 	for d := 1; d <= 31; d++ {
@@ -76,9 +76,9 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 			records, errRec := cli.GetAttendanceRecords(sTime, eTime)
 			if errRec == nil && len(records) > 0 {
 				for _, r := range records {
-					t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
+					t, _ := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
 					if t.IsZero() {
-						t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
+						t, _ = time.ParseInLocation("2006-01-02 15:04", r.ClockTime, loc)
 					}
 					if t.IsZero() {
 						continue
@@ -321,7 +321,7 @@ func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	}
 
 	// 补齐没有任何打卡记录的历史天数，自动置为“休息”，防止下次继续当做异常请求API
-	todayStrLimit := time.Now().Format("2006-01-02")
+	todayStrLimit := time.Now().In(loc).Format("2006-01-02")
 	for _, p := range allPersons {
 		for d := 1; d <= 31; d++ {
 			dateStr := fmt.Sprintf("%s-%02d", monthStr, d)

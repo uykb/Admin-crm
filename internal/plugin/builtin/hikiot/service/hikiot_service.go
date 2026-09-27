@@ -201,19 +201,21 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 	if errCli == nil && cli.AppKey != "" && cli.AppSecret != "" {
 		sTime := startDate
 		eTime := endDate
+		loc := time.FixedZone("CST", 8*3600)
 		if sTime == "" {
-			sTime = time.Now().Format("2006-01-02 00:00:00") // 默认只查今天，节省 API 额度
+			sTime = time.Now().In(loc).Format("2006-01-02 00:00:00") // 默认只查今天，节省 API 额度
 		}
 		if eTime == "" {
-			eTime = time.Now().Format("2006-01-02 23:59:59")
+			eTime = time.Now().In(loc).Format("2006-01-02 23:59:59")
 		}
 		records, errRec := cli.GetAttendanceRecords(sTime, eTime)
 		if errRec == nil {
 			var apiList []hkmodel.HkAttendance
 			for _, r := range records {
-				t, _ := time.Parse("2006-01-02 15:04:05", r.ClockTime)
+				loc := time.FixedZone("CST", 8*3600)
+				t, _ := time.ParseInLocation("2006-01-02 15:04:05", r.ClockTime, loc)
 				if t.IsZero() {
-					t, _ = time.Parse("2006-01-02 15:04", r.ClockTime)
+					t, _ = time.ParseInLocation("2006-01-02 15:04", r.ClockTime, loc)
 				}
 
 				pID := r.PersonNo
