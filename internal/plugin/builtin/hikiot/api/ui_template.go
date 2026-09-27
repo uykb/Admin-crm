@@ -21,8 +21,24 @@ const HikUIHTML = `<!DOCTYPE html>
     .door-title { font-weight: 600; font-size: 16px; color: var(--el-text-color-primary); }
     .door-code { font-size: 12px; color: var(--el-text-color-regular); font-family: monospace; }
     .door-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); margin-top: 15px; }
-    .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; }
+    .filter-bar { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
     .el-table .cell { padding: 0 4px !important; }
+
+    /* 📱 手机移动端响应式自适应优化 */
+    @media (max-width: 768px) {
+      body { padding: 8px; }
+      .header-box { padding: 12px 14px; margin-bottom: 12px; }
+      .card-box { padding: 12px; }
+      .filter-bar { gap: 8px; flex-direction: column; align-items: stretch; }
+      .filter-bar .el-form-item { margin-bottom: 8px; margin-right: 0 !important; width: 100%; }
+      .filter-bar .el-input, .filter-bar .el-date-picker, .filter-bar .el-select { width: 100% !important; }
+      .filter-bar .el-button { width: 100%; margin-left: 0 !important; margin-top: 4px; }
+      .door-grid { grid-template-columns: 1fr; gap: 12px; }
+      .door-actions { justify-content: space-around; flex-wrap: wrap; }
+      .el-dialog { width: 92% !important; max-width: 480px; margin: 15px auto !important; }
+      .el-table { font-size: 12px; }
+      .el-tag { padding: 0 3px; }
+    }
   </style>
 </head>
 <body>
