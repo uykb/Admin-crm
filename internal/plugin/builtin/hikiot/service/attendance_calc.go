@@ -22,6 +22,52 @@ func logDebug(format string, args ...interface{}) {
 	fmt.Println(msg)
 }
 
+func buildPersonResolver(persons []model.HkPerson) func(personID, personNo, jobNo, name string) (string, string) {
+	byID := make(map[string]model.HkPerson)
+	byJob := make(map[string]model.HkPerson)
+	byName := make(map[string]model.HkPerson)
+
+	for _, p := range persons {
+		if p.PersonID != "" {
+			byID[p.PersonID] = p
+		}
+		if p.JobNo != "" {
+			byJob[p.JobNo] = p
+		}
+		if p.PersonName != "" {
+			byName[p.PersonName] = p
+		}
+	}
+
+	return func(personID, personNo, jobNo, name string) (string, string) {
+		if personNo != "" {
+			if p, ok := byID[personNo]; ok {
+				return p.PersonID, p.PersonName
+			}
+		}
+		if personID != "" {
+			if p, ok := byID[personID]; ok {
+				return p.PersonID, p.PersonName
+			}
+		}
+		if jobNo != "" {
+			if p, ok := byJob[jobNo]; ok {
+				return p.PersonID, p.PersonName
+			}
+		}
+		if name != "" {
+			if p, ok := byName[name]; ok {
+				return p.PersonID, p.PersonName
+			}
+		}
+		finalID := personNo
+		if finalID == "" {
+			finalID = personID
+		}
+		return finalID, name
+	}
+}
+
 // CalculateMonthlyAttendance 执行指定月份的智能考勤排班判定
 func (s *HikService) CalculateMonthlyAttendance(monthStr string) error {
 	return s.calculateAttendanceInternal(monthStr, false)
@@ -38,9 +84,10 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 	var existingResults []model.HkAttendanceResult
 	s.db.Where("date LIKE ?", monthStr+"%").Find(&existingResults)
 
-	// 获取部门人员
+	// 获取部门人员并构建解析器
 	var allPersons []model.HkPerson
 	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
+	resolver := buildPersonResolver(allPersons)
 
 	normalMap := make(map[string]bool)
 	for _, r := range existingResults {
@@ -115,14 +162,11 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 						if t.IsZero() {
 							continue
 						}
-						pID := r.PersonNo
-						if pID == "" {
-							pID = r.PersonID
-						}
 						jNo := r.JobNumber
 						if jNo == "" {
 							jNo = r.JobNo
 						}
+						canonicalID, canonicalName := resolver(r.PersonID, r.PersonNo, jNo, r.PersonName)
 						devName := r.DeviceName
 						if devName == "" {
 							devName = r.Address
@@ -144,10 +188,10 @@ func (s *HikService) calculateAttendanceInternal(monthStr string, skipAPI bool) 
 							vMode = 1
 						}
 
-						key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
+						key := fmt.Sprintf("%s_%s", canonicalID, t.Format("2006-01-02 15:04:05"))
 						toCreateMap[key] = model.HkAttendance{
-							PersonID:   pID,
-							PersonName: r.PersonName,
+							PersonID:   canonicalID,
+							PersonName: canonicalName,
 							JobNo:      jNo,
 							ClockTime:  t,
 							DoorName:   devName,
@@ -422,6 +466,10 @@ func (s *HikService) CalculateRangeAttendance(startDateStr, endDateStr string) e
 		return fmt.Errorf("结束日期格式错误: %v", err)
 	}
 
+	var allPersons []model.HkPerson
+	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
+	resolver := buildPersonResolver(allPersons)
+
 	cli, errCli := s.GetClient()
 	if errCli == nil && cli.AppKey != "" {
 		toCreateMap := make(map[string]model.HkAttendance)
@@ -436,14 +484,11 @@ func (s *HikService) CalculateRangeAttendance(startDateStr, endDateStr string) e
 				if t.IsZero() {
 					continue
 				}
-				pID := r.PersonNo
-				if pID == "" {
-					pID = r.PersonID
-				}
 				jNo := r.JobNumber
 				if jNo == "" {
 					jNo = r.JobNo
 				}
+				canonicalID, canonicalName := resolver(r.PersonID, r.PersonNo, jNo, r.PersonName)
 				devName := r.DeviceName
 				if devName == "" {
 					devName = r.Address
@@ -463,10 +508,10 @@ func (s *HikService) CalculateRangeAttendance(startDateStr, endDateStr string) e
 					vMode = 1
 				}
 
-				key := fmt.Sprintf("%s_%s", pID, t.Format("2006-01-02 15:04:05"))
+				key := fmt.Sprintf("%s_%s", canonicalID, t.Format("2006-01-02 15:04:05"))
 				toCreateMap[key] = model.HkAttendance{
-					PersonID:   pID,
-					PersonName: r.PersonName,
+					PersonID:   canonicalID,
+					PersonName: canonicalName,
 					JobNo:      jNo,
 					ClockTime:  t,
 					DoorName:   devName,
@@ -490,9 +535,6 @@ func (s *HikService) CalculateRangeAttendance(startDateStr, endDateStr string) e
 	_ = s.db.Where("clock_time >= ? AND clock_time < ? AND person_id IN (SELECT person_id FROM hk_person WHERE org_index_code = ?)", queryStart, queryEnd, "BM54141022").
 		Order("person_id ASC, clock_time ASC").
 		Find(&rawRecords).Error
-
-	var allPersons []model.HkPerson
-	s.db.Where("org_index_code = ?", "BM54141022").Find(&allPersons)
 
 	personRecords := make(map[string][]model.HkAttendance)
 	personNames := make(map[string]string)

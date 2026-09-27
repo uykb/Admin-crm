@@ -264,6 +264,10 @@ func (s *HikService) QueryAttendance(personName string, startDate, endDate strin
 				}
 				apiList = append(apiList, item)
 			}
+			// 将实时拉到的流水同时持久化存库，方便后续排班核算引擎共享
+			if len(apiList) > 0 {
+				s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&apiList, 100)
+			}
 			// 按时间倒序
 			sort.Slice(apiList, func(i, j int) bool {
 				return apiList[i].ClockTime.After(apiList[j].ClockTime)
