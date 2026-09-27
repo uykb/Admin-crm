@@ -55,8 +55,35 @@ func (c *Client) SetUserAccessToken(token string) {
 	c.UserAccessToken = strings.TrimSpace(token)
 }
 
-// DoRequest 发送签名与 Token 授权请求
+// DoRequest 发送签名与 Token 授权请求（支持 429 频控自动退避重试）
 func (c *Client) DoRequest(method, path string, bodyData interface{}, result interface{}) error {
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// 指数退避重试: 1s, 2s
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+
+		err := c.doRequestOnce(method, path, bodyData, result)
+		if err == nil {
+			return nil
+		}
+
+		// 判定是否触发海康限流 (HTTP 429 或 Code 400002)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "400002") || strings.Contains(errMsg, "限流") {
+			lastErr = err
+			continue
+		}
+
+		return err
+	}
+	return lastErr
+}
+
+func (c *Client) doRequestOnce(method, path string, bodyData interface{}, result interface{}) error {
 	if c.AppKey == "" || c.AppSecret == "" {
 		return fmt.Errorf("海康互联未设置 AppKey 或 AppSecret，请先在插件设置中配置凭据")
 	}
