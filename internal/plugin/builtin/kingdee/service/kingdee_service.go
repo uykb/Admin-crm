@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	kdclient "apeadmin-gin/internal/plugin/builtin/kingdee/client"
@@ -20,13 +21,17 @@ func NewKingdeeService(db *gorm.DB) *KingdeeService {
 }
 
 type ConfigDTO struct {
-	ServerURL string `json:"server_url"`
-	DbID      string `json:"db_id"`
-	Username  string `json:"username"`
-	AppID     string `json:"app_id"`
-	AppSecret string `json:"app_secret"`
-	Password  string `json:"password"`
-	Lcid      int    `json:"lcid"`
+	ServerURL             string `json:"server_url"`
+	DbID                  string `json:"db_id"`
+	Username              string `json:"username"`
+	Password              string `json:"password"`
+	KdAppID               string `json:"kd_app_id"`
+	KdAppSecret           string `json:"kd_app_secret"`
+	Lcid                  int    `json:"lcid"`
+	FeishuAppID           string `json:"feishu_app_id"`
+	FeishuAppSecret       string `json:"feishu_app_secret"`
+	FeishuEncryptKey      string `json:"feishu_encrypt_key"`
+	DefaultApproverOpenID string `json:"default_approver_openid"`
 }
 
 // GetConfig 获取配置信息
@@ -48,14 +53,56 @@ func (s *KingdeeService) GetConfig() (*ConfigDTO, error) {
 		lcid = 2052
 	}
 
+	kdAppID := cfgMap["kd_app_id"]
+	if kdAppID == "" {
+		kdAppID = cfgMap["kingdee_app_id"]
+	}
+	kdAppSecret := cfgMap["kd_app_secret"]
+	if kdAppSecret == "" {
+		kdAppSecret = cfgMap["kingdee_app_secret"]
+	}
+
+	feishuAppID := cfgMap["feishu_app_id"]
+	feishuAppSecret := cfgMap["feishu_app_secret"]
+
+	// 兼容修复：若之前把金蝶 AppID (如 352877_...) 填进了 app_id 或 kingdee_app_id 混用
+	oldAppID := cfgMap["app_id"]
+	if oldAppID != "" {
+		if strings.HasPrefix(oldAppID, "cli_") {
+			if feishuAppID == "" {
+				feishuAppID = oldAppID
+			}
+		} else {
+			if kdAppID == "" {
+				kdAppID = oldAppID
+			}
+		}
+	}
+	oldAppSecret := cfgMap["app_secret"]
+	if oldAppSecret != "" {
+		if len(oldAppSecret) == 32 && strings.HasPrefix(oldAppID, "cli_") {
+			if feishuAppSecret == "" {
+				feishuAppSecret = oldAppSecret
+			}
+		} else {
+			if kdAppSecret == "" {
+				kdAppSecret = oldAppSecret
+			}
+		}
+	}
+
 	return &ConfigDTO{
-		ServerURL: cfgMap["kingdee_server_url"],
-		DbID:      cfgMap["kingdee_db_id"],
-		Username:  cfgMap["kingdee_username"],
-		AppID:     cfgMap["kingdee_app_id"],
-		AppSecret: cfgMap["kingdee_app_secret"],
-		Password:  cfgMap["kingdee_password"],
-		Lcid:      lcid,
+		ServerURL:             cfgMap["kingdee_server_url"],
+		DbID:                  cfgMap["kingdee_db_id"],
+		Username:              cfgMap["kingdee_username"],
+		Password:              cfgMap["kingdee_password"],
+		KdAppID:               kdAppID,
+		KdAppSecret:           kdAppSecret,
+		Lcid:                  lcid,
+		FeishuAppID:           feishuAppID,
+		FeishuAppSecret:       feishuAppSecret,
+		FeishuEncryptKey:      cfgMap["feishu_encrypt_key"],
+		DefaultApproverOpenID: cfgMap["default_approver_openid"],
 	}, nil
 }
 
@@ -71,13 +118,19 @@ func (s *KingdeeService) SaveConfig(cfg *ConfigDTO) error {
 	}
 
 	items := map[string]string{
-		"kingdee_server_url": cfg.ServerURL,
-		"kingdee_db_id":      cfg.DbID,
-		"kingdee_username":   cfg.Username,
-		"kingdee_app_id":     cfg.AppID,
-		"kingdee_app_secret": cfg.AppSecret,
-		"kingdee_password":   cfg.Password,
-		"kingdee_lcid":       lcidStr,
+		"kingdee_server_url":     cfg.ServerURL,
+		"kingdee_db_id":          cfg.DbID,
+		"kingdee_username":       cfg.Username,
+		"kingdee_password":       cfg.Password,
+		"kd_app_id":              cfg.KdAppID,
+		"kd_app_secret":          cfg.KdAppSecret,
+		"kingdee_app_id":         cfg.KdAppID,
+		"kingdee_app_secret":     cfg.KdAppSecret,
+		"kingdee_lcid":           lcidStr,
+		"feishu_app_id":          cfg.FeishuAppID,
+		"feishu_app_secret":      cfg.FeishuAppSecret,
+		"feishu_encrypt_key":     cfg.FeishuEncryptKey,
+		"default_approver_openid": cfg.DefaultApproverOpenID,
 	}
 
 	for k, v := range items {
@@ -104,7 +157,7 @@ func (s *KingdeeService) getClient() (*kdclient.Client, error) {
 	if cfg.DbID == "" || cfg.Username == "" {
 		return nil, fmt.Errorf("未配置金蝶账套 ID 或登录用户")
 	}
-	return kdclient.NewClient(cfg.ServerURL, cfg.DbID, cfg.Username, cfg.Password, cfg.AppID, cfg.AppSecret, cfg.Lcid), nil
+	return kdclient.NewClient(cfg.ServerURL, cfg.DbID, cfg.Username, cfg.Password, cfg.KdAppID, cfg.KdAppSecret, cfg.Lcid), nil
 }
 
 // TestConnection 测试连通性

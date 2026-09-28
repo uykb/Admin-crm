@@ -44,10 +44,10 @@ func (s *FeishuApprovalService) getFeishuClient() (*kdfeishu.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.AppID == "" || cfg.AppSecret == "" {
-		return nil, fmt.Errorf("未配置飞书 AppID 或 AppSecret，请先在金蝶配置中设置")
+	if cfg.FeishuAppID == "" || cfg.FeishuAppSecret == "" {
+		return nil, fmt.Errorf("未配置飞书 AppID 或 AppSecret，请先在配置中设置飞书开放平台应用信息")
 	}
-	return kdfeishu.NewClient(cfg.AppID, cfg.AppSecret, "https://open.feishu.cn"), nil
+	return kdfeishu.NewClient(cfg.FeishuAppID, cfg.FeishuAppSecret, "https://open.feishu.cn"), nil
 }
 
 // StartFeishuApproval 发起飞书审批

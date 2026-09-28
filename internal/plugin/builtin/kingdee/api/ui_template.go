@@ -167,30 +167,53 @@ const KingdeeUIHTML = `<!DOCTYPE html>
 
         <!-- 标签页 5：金蝶与飞书基础配置 -->
         <el-tab-pane label="金蝶/飞书基础配置" name="config">
-          <el-form :model="configForm" label-width="160px" style="max-width: 700px; margin-top: 10px;">
+          <el-form :model="configForm" label-width="180px" style="max-width: 750px; margin-top: 10px;">
+            
+            <el-divider content-position="left">
+              <el-icon><box /></el-icon> <strong>金蝶云星空 ERP 连接配置</strong>
+            </el-divider>
+
             <el-form-item label="金蝶服务器地址" required>
-              <el-input v-model="configForm.server_url" placeholder="如 http://192.168.1.100/k3cloud"></el-input>
+              <el-input v-model="configForm.server_url" placeholder="如 http://183.6.98.164:9080"></el-input>
             </el-form-item>
             <el-form-item label="账套 ID (DbID)" required>
-              <el-input v-model="configForm.db_id" placeholder="金蝶账套数据中心 ID"></el-input>
+              <el-input v-model="configForm.db_id" placeholder="金蝶账套数据中心 ID，如 6a62c504f0138e"></el-input>
             </el-form-item>
             <el-form-item label="登录用户名" required>
-              <el-input v-model="configForm.username"></el-input>
+              <el-input v-model="configForm.username" placeholder="金蝶登录账号，如 Administrator"></el-input>
             </el-form-item>
             <el-form-item label="登录密码">
-              <el-input v-model="configForm.password" type="password" show-password></el-input>
+              <el-input v-model="configForm.password" type="password" show-password placeholder="金蝶用户登录密码（密码认证模式）"></el-input>
             </el-form-item>
-            <el-form-item label="飞书 App ID (自建应用)">
-              <el-input v-model="configForm.app_id" placeholder="cli_a..."></el-input>
+            <el-form-item label="金蝶 App ID">
+              <el-input v-model="configForm.kd_app_id" placeholder="金蝶 Web API 应用授权 AppID (如 352877_...)"></el-input>
             </el-form-item>
-            <el-form-item label="飞书 App Secret">
-              <el-input v-model="configForm.app_secret" type="password" show-password></el-input>
+            <el-form-item label="金蝶 App Secret">
+              <el-input v-model="configForm.kd_app_secret" type="password" show-password placeholder="金蝶 Web API 应用授权 AppSecret"></el-input>
             </el-form-item>
             <el-form-item label="语言 ID (LCID)">
               <el-input-number v-model="configForm.lcid" :min="1000"></el-input-number>
             </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="saveConfig">保存配置</el-button>
+
+            <el-divider content-position="left">
+              <el-icon><chat-dot-round /></el-icon> <strong>飞书开放平台集成配置</strong>
+            </el-divider>
+
+            <el-form-item label="飞书 App ID (自建应用)">
+              <el-input v-model="configForm.feishu_app_id" placeholder="飞书开发者后台应用 App ID (如 cli_a1b2c3d4e5...)"></el-input>
+            </el-form-item>
+            <el-form-item label="飞书 App Secret">
+              <el-input v-model="configForm.feishu_app_secret" type="password" show-password placeholder="飞书开发者后台应用 App Secret"></el-input>
+            </el-form-item>
+            <el-form-item label="Webhook 签名/加密 Key">
+              <el-input v-model="configForm.feishu_encrypt_key" type="password" show-password placeholder="飞书事件订阅 Encrypt Key / X-Lark-Signature 签名密钥 (可选)"></el-input>
+            </el-form-item>
+            <el-form-item label="默认兜底审批人 OpenID">
+              <el-input v-model="configForm.default_approver_openid" placeholder="无法自动匹配审批人时的兜底 OpenID (如 ou_...)"></el-input>
+            </el-form-item>
+
+            <el-form-item style="margin-top: 20px;">
+              <el-button type="primary" @click="saveConfig">保存全套配置</el-button>
               <el-button type="success" @click="testConnection">测试金蝶连通性</el-button>
             </el-form-item>
           </el-form>
@@ -279,7 +302,17 @@ const KingdeeUIHTML = `<!DOCTYPE html>
         const customResultCols = ref(0);
 
         const configForm = ref({
-          server_url: '', db_id: '', username: '', password: '', app_id: '', app_secret: '', lcid: 2052
+          server_url: '',
+          db_id: '',
+          username: '',
+          password: '',
+          kd_app_id: '',
+          kd_app_secret: '',
+          lcid: 2052,
+          feishu_app_id: '',
+          feishu_app_secret: '',
+          feishu_encrypt_key: '',
+          default_approver_openid: ''
         });
 
         const instances = ref([]);
@@ -313,7 +346,7 @@ const KingdeeUIHTML = `<!DOCTYPE html>
             const res = await fetch('/api/v1/kingdee/config', { headers: getAuthHeader() });
             const data = await res.json();
             if (data.code === 200 && data.data) {
-              configForm.value = data.data;
+              configForm.value = { ...configForm.value, ...data.data };
             }
           } catch (e) {
             console.error('加载金蝶配置失败', e);
