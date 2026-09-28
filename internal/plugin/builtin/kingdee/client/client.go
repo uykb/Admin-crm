@@ -291,3 +291,101 @@ func (c *Client) ExecuteBillQuery(reqData BillQueryData) ([][]interface{}, error
 
 	return nil, fmt.Errorf("解析金蝶数据响应失败，服务器原始响应内容: %w", lastErr)
 }
+
+// Audit 执行金蝶单据审核操作 (Audit Web API)
+func (c *Client) Audit(formID string, fid string) error {
+	if err := c.Authenticate(); err != nil {
+		return err
+	}
+
+	endpoints := []string{
+		"/Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.Audit.common.kdsvc",
+		"/Kingdee.BOS.WebApi.ServicesRepository.ApiService.Audit.common.kdsvc",
+	}
+
+	payload := map[string]interface{}{
+		"formid": formID,
+		"data": map[string]interface{}{
+			"CreateOrgId": 0,
+			"Numbers":     []string{},
+			"Ids":         fid,
+		},
+	}
+
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	var lastErr error
+	for _, endpoint := range endpoints {
+		url := c.ServerURL + endpoint
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBytes))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
+		bodyBytes = bytes.TrimSpace(bodyBytes)
+
+		if resp.StatusCode >= 400 {
+			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+			continue
+		}
+
+		var resObj map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &resObj); err == nil {
+			if res, ok := resObj["Result"].(map[string]interface{}); ok {
+				if respStatus, ok := res["ResponseStatus"].(map[string]interface{}); ok {
+					if isSuccess, ok := respStatus["IsSuccess"].(bool); ok && isSuccess {
+						return nil
+					}
+					if errs, ok := respStatus["Errors"].([]interface{}); ok && len(errs) > 0 {
+						if errMap, ok := errs[0].(map[string]interface{}); ok {
+							if msg, ok := errMap["Message"].(string); ok {
+								return fmt.Errorf("金蝶审核拒绝: %s", msg)
+							}
+						}
+					}
+				}
+			}
+		}
+		lastErr = fmt.Errorf("金蝶审核响应解析失败: %s", string(bodyBytes))
+	}
+
+	return lastErr
+}
+
+// IsAudited 查询金蝶单据状态，判断是否已处于审核完成状态 (DocumentStatus == 'C')
+func (c *Client) IsAudited(formID string, fid string) (bool, error) {
+	rows, err := c.ExecuteBillQuery(BillQueryData{
+		FormID:       formID,
+		FieldKeys:    "FDocumentStatus",
+		FilterString: fmt.Sprintf("FID = '%s'", fid),
+		Limit:        1,
+	})
+	if err != nil {
+		return false, err
+	}
+	if len(rows) > 0 && len(rows[0]) > 0 {
+		status := fmt.Sprintf("%v", rows[0][0])
+		return status == "C", nil
+	}
+	return false, nil
+}
+

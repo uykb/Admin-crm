@@ -4,18 +4,20 @@ import (
 	"fmt"
 
 	"apeadmin-gin/internal/mcp"
+	kdmodel "apeadmin-gin/internal/plugin/builtin/kingdee/model"
 	kdservice "apeadmin-gin/internal/plugin/builtin/kingdee/service"
 
 	"gorm.io/gorm"
 )
 
-// RegisterTools 向系统 MCP 管理器注册金蝶云星空 AI 工具
+// RegisterTools 向系统 MCP 管理器注册金蝶云星空 & 飞书审批 AI 工具
 func RegisterTools(mgr *mcp.Manager, db *gorm.DB) {
 	if mgr == nil {
 		return
 	}
 
 	svc := kdservice.NewKingdeeService(db)
+	feishuSvc := kdservice.NewFeishuApprovalService(db)
 
 	// 1. kingdee_query_materials
 	mgr.RegisterTool(&mcp.ToolEntry{
@@ -173,6 +175,83 @@ func RegisterTools(mgr *mcp.Manager, db *gorm.DB) {
 				return nil, fmt.Errorf("执行金蝶通用查询失败: %w", err)
 			}
 			return rows, nil
+		},
+	})
+
+	// 5. kingdee_query_approval_instances
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "kingdee_query_approval_instances",
+		Description: "查询金蝶-飞书集成审批的实例记录与状态 (PENDING, PENDING_AUDIT, APPROVED, REJECTED, AUDIT_FAILED)。",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"status": map[string]interface{}{
+					"type":        "string",
+					"description": "实例状态过滤（如 PENDING, PENDING_AUDIT, APPROVED, REJECTED）",
+				},
+				"limit": map[string]interface{}{
+					"type":        "integer",
+					"description": "返回数量限制（默认 20）",
+				},
+			},
+		},
+		PluginName:          "kingdee",
+		Category:            "erp",
+		RequiredPermissions: []string{"kingdee:data:query"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			statusFilter, _ := args["status"].(string)
+			limit, _ := args["limit"].(float64)
+			limitInt := int(limit)
+			if limitInt <= 0 {
+				limitInt = 20
+			}
+
+			var insts []kdmodel.KdInstance
+			tx := db.Order("id DESC").Limit(limitInt)
+			if statusFilter != "" {
+				tx = tx.Where("approve_status = ?", statusFilter)
+			}
+			if err := tx.Find(&insts).Error; err != nil {
+				return nil, fmt.Errorf("查询审批实例失败: %w", err)
+			}
+			return insts, nil
+		},
+	})
+
+	// 6. kingdee_retry_approval_audit
+	mgr.RegisterTool(&mcp.ToolEntry{
+		Name:        "kingdee_retry_approval_audit",
+		Description: "手动触发将已通过飞书审批的单据进行金蝶 Audit 审核反写操作。",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"instance_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "审批实例 ID",
+				},
+			},
+			"required": []interface{}{"instance_id"},
+		},
+		PluginName:          "kingdee",
+		Category:            "erp",
+		RequiredPermissions: []string{"kingdee:config:edit"},
+		Handler: func(args map[string]interface{}) (interface{}, error) {
+			idVal, _ := args["instance_id"].(float64)
+			id := uint(idVal)
+			if id == 0 {
+				return nil, fmt.Errorf("instance_id 不能为空")
+			}
+
+			var inst kdmodel.KdInstance
+			if err := db.First(&inst, id).Error; err != nil {
+				return nil, fmt.Errorf("找不到指定的审批实例")
+			}
+
+			ok := feishuSvc.AuditInstance(&inst)
+			return map[string]interface{}{
+				"success": ok,
+				"instance": inst,
+			}, nil
 		},
 	})
 }

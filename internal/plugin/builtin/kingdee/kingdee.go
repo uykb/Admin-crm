@@ -2,7 +2,9 @@ package kingdee
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"time"
 
 	"apeadmin-gin/internal/core"
 	"apeadmin-gin/internal/dal"
@@ -23,15 +25,15 @@ func (p *KingdeePlugin) Name() string {
 }
 
 func (p *KingdeePlugin) DisplayName() string {
-	return "金蝶云星空 ERP 内网集成"
+	return "金蝶云星空 ERP 内网集成与飞书审批"
 }
 
 func (p *KingdeePlugin) Description() string {
-	return "金蝶云星空 K3 Cloud ERP 内网账套对接插件，支持 Tailscale 子网路由直连，提供物料、客户及销售订单数据查询与 AI MCP 运维"
+	return "金蝶云星空 K3 Cloud ERP 内网账套对接与飞书移动集成审批插件，支持单据同步、飞书动态表单审批、状态反写与 AI MCP 运维"
 }
 
 func (p *KingdeePlugin) Version() string {
-	return "1.0.0"
+	return "1.1.0"
 }
 
 func (p *KingdeePlugin) Author() string {
@@ -71,7 +73,7 @@ func (p *KingdeePlugin) OnLoad() error {
 		}
 		p.ensureMenu(db)
 	}
-	log.Println("[Plugin:kingdee] 金蝶云星空 ERP 插件加载完成并在数据库登记")
+	log.Println("[Plugin:kingdee] 金蝶云星空 ERP & 飞书审批插件加载完成并在数据库登记")
 	return nil
 }
 
@@ -141,6 +143,8 @@ func (p *KingdeePlugin) Register(pr *plugin.PluginRouter) error {
 		if err := pr.DB.AutoMigrate(kdmodel.AllModels()...); err != nil {
 			log.Printf("[Plugin:kingdee] 自动迁移表结构失败: %v", err)
 		}
+		// 启动后台异步任务 (轮询待审批单据与自动回写审核)
+		p.startBackgroundTasks(pr.DB)
 	}
 
 	// 2. 挂载 HTTP 路由
@@ -154,8 +158,63 @@ func (p *KingdeePlugin) Register(pr *plugin.PluginRouter) error {
 		kdmcp.RegisterTools(pr.MCP, pr.DB)
 	}
 
-	log.Println("[Plugin:kingdee] HTTP 路由与 MCP 工具已就绪")
+	log.Println("[Plugin:kingdee] HTTP 路由、飞书审批后台任务与 MCP 工具已就绪")
 	return nil
+}
+
+func (p *KingdeePlugin) startBackgroundTasks(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	feishuSvc := kdservice.NewFeishuApprovalService(db)
+	kdSvc := kdservice.NewKingdeeService(db)
+
+	// 1. Audit Task: 每 1 分钟扫描 PENDING_AUDIT / AUDIT_FAILED 实例并回写金蝶
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			var insts []kdmodel.KdInstance
+			db.Where("approve_status IN ? AND retry_count < 5", []string{kdmodel.InstanceStatusPendingAudit, kdmodel.InstanceStatusAuditFailed}).Find(&insts)
+			for _, inst := range insts {
+				_ = feishuSvc.AuditInstance(&inst)
+			}
+		}
+	}()
+
+	// 2. Poll Task: 每 3 分钟扫描金蝶待审批单据 (状态=B) 并自动发起飞书审批
+	go func() {
+		ticker := time.NewTicker(3 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			var flows []kdmodel.KdFlow
+			db.Where("enabled = ? AND channel = 'feishu'", true).Find(&flows)
+			for _, flow := range flows {
+				filterStr := fmt.Sprintf("%s = '%s'", flow.StatusField, flow.PollFilterStatus)
+				limit := flow.PollMaxBills
+				if limit <= 0 {
+					limit = 50
+				}
+				rows, err := kdSvc.ExecuteBillQuery(flow.KingdeeFormId, "FID,"+flow.BillNoField+","+flow.StatusField+",FCreatorId", filterStr, limit)
+				if err != nil || len(rows) == 0 {
+					continue
+				}
+				for _, row := range rows {
+					if len(row) >= 3 {
+						billMap := map[string]interface{}{
+							"FID":            row[0],
+							flow.BillNoField: row[1],
+							flow.StatusField: row[2],
+						}
+						if len(row) >= 4 {
+							billMap["FCreatorId"] = row[3]
+						}
+						_, _, _ = feishuSvc.StartFeishuApproval(&flow, billMap)
+					}
+				}
+			}
+		}
+	}()
 }
 
 func (p *KingdeePlugin) Unregister() error {
