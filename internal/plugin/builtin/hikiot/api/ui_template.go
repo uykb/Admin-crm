@@ -131,7 +131,11 @@ const HikUIHTML = `<!DOCTYPE html>
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="clock_time" label="打卡时间" width="200"></el-table-column>
+          <el-table-column label="打卡时间" width="280">
+            <template #default="scope">
+              {{ formatTimeHuman(scope.row.clock_time) }}
+            </template>
+          </el-table-column>
         </el-table>
       </div>
 
@@ -218,7 +222,11 @@ const HikUIHTML = `<!DOCTYPE html>
           <el-tab-pane label="当日打卡明细" name="records">
             <el-table :data="cellRecords" stripe v-loading="loadingCellRecords" style="width: 100%; margin-top: 10px;" height="240">
               <template #empty><el-empty description="当日无打卡记录" :image-size="60"></el-empty></template>
-              <el-table-column prop="clock_time" label="打卡时间" width="160"></el-table-column>
+              <el-table-column label="打卡时间" width="280">
+                <template #default="scope">
+                  {{ formatTimeHuman(scope.row.clock_time) }}
+                </template>
+              </el-table-column>
               <el-table-column prop="door_name" label="通行位置"></el-table-column>
             </el-table>
           </el-tab-pane>
@@ -251,6 +259,40 @@ const HikUIHTML = `<!DOCTYPE html>
           if (activeTab.value === 'doors') return '门禁设备管控';
           if (activeTab.value === 'attendance') return '打卡考勤记录';
           return '排班考勤汇总';
+        };
+
+        const formatTimeHuman = (isoString) => {
+          if (!isoString) return '';
+          const date = new Date(isoString);
+          if (isNaN(date.getTime())) return isoString;
+
+          const year = date.getFullYear();
+          const month = date.getMonth() + 1;
+          const day = date.getDate();
+
+          const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+          const week = weekdays[date.getDay()];
+
+          const hours = date.getHours();
+          const minutes = date.getMinutes();
+          const mStr = minutes < 10 ? '0' + minutes : minutes;
+
+          let period = '';
+          if (hours >= 0 && hours < 6) {
+            period = '凌晨';
+          } else if (hours >= 6 && hours < 12) {
+            period = '上午';
+          } else if (hours === 12) {
+            period = '中午';
+          } else if (hours > 12 && hours < 18) {
+            period = '下午';
+          } else {
+            period = '晚上';
+          }
+
+          const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+
+          return year + '年' + month + '月' + day + '日（' + week + '）' + period + ' ' + displayHour + '点' + mStr + '分';
         };
 
         const doors = ref([]);
@@ -599,7 +641,7 @@ const HikUIHTML = `<!DOCTYPE html>
           matrixMonth, matrixData, loadingMatrix, calculatingMatrix, exportingMatrix, daysInMonth, loadMatrix, calculateMatrix, exportMatrix,
           clearingResults, clearResults, syncingPersons, syncPersons,
           progressVisible, calcPercent, calcStatusText,
-          handleCellClick, editDialogVisible, editTab, cellRecords, loadingCellRecords, savingEdit, editForm, saveEdit, goBack
+          handleCellClick, editDialogVisible, editTab, cellRecords, loadingCellRecords, savingEdit, editForm, saveEdit, goBack, formatTimeHuman
         };
       }
     });
