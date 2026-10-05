@@ -12,6 +12,7 @@ const HikUIHTML = `<!DOCTYPE html>
   <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/element-plus@2.7.5/dist/index.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@2.3.1/dist/index.iife.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--el-bg-color-page); margin: 0; padding: 20px; color: var(--el-text-color-primary); }
     .header-box { background: var(--el-bg-color-overlay); padding: 20px; border-radius: 8px; box-shadow: var(--el-box-shadow-light); margin-bottom: 20px; }
@@ -156,6 +157,9 @@ const HikUIHTML = `<!DOCTYPE html>
             <el-button type="danger" :loading="clearingResults" @click="clearResults" style="margin-left:8px;">
               <el-icon><delete /></el-icon> 清空核算数据
             </el-button>
+            <el-button type="info" :loading="exportingMatrix" @click="exportMatrix" style="margin-left:8px;">
+              <el-icon><download /></el-icon> 导出 Excel
+            </el-button>
           </el-form-item>
         </el-form>
 
@@ -185,29 +189,40 @@ const HikUIHTML = `<!DOCTYPE html>
         </el-table>
       </div>
 
-      <!-- 手工调整弹窗 -->
-      <el-dialog v-model="editDialogVisible" title="考勤结果手工调整" width="400px">
-        <el-form :model="editForm" label-width="80px">
-          <el-form-item label="员工">
-            <el-input v-model="editForm.personName" disabled></el-input>
-          </el-form-item>
-          <el-form-item label="日期">
-            <el-input v-model="editForm.date" disabled></el-input>
-          </el-form-item>
-          <el-form-item label="判定状态">
-            <el-select v-model="editForm.shiftType" style="width: 100%">
-              <el-option label="白班" value="白班"></el-option>
-              <el-option label="夜班" value="夜班"></el-option>
-              <el-option label="异常" value="异常"></el-option>
-              <el-option label="缺卡" value="缺卡"></el-option>
-              <el-option label="请假" value="请假"></el-option>
-              <el-option label="休息" value="休息"></el-option>
-            </el-select>
-          </el-form-item>
-          <el-form-item label="备注">
-            <el-input v-model="editForm.remark" type="textarea"></el-input>
-          </el-form-item>
-        </el-form>
+      <!-- 手工调整与打卡明细穿透弹窗 -->
+      <el-dialog v-model="editDialogVisible" title="考勤明细与手工调整" width="500px">
+        <el-tabs v-model="editTab">
+          <el-tab-pane label="状态调整" name="form">
+            <el-form :model="editForm" label-width="80px" style="margin-top: 15px;">
+              <el-form-item label="员工">
+                <el-input v-model="editForm.personName" disabled></el-input>
+              </el-form-item>
+              <el-form-item label="日期">
+                <el-input v-model="editForm.date" disabled></el-input>
+              </el-form-item>
+              <el-form-item label="判定状态">
+                <el-select v-model="editForm.shiftType" style="width: 100%">
+                  <el-option label="白班" value="白班"></el-option>
+                  <el-option label="夜班" value="夜班"></el-option>
+                  <el-option label="异常" value="异常"></el-option>
+                  <el-option label="缺卡" value="缺卡"></el-option>
+                  <el-option label="请假" value="请假"></el-option>
+                  <el-option label="休息" value="休息"></el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="备注">
+                <el-input v-model="editForm.remark" type="textarea"></el-input>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+          <el-tab-pane label="当日打卡明细" name="records">
+            <el-table :data="cellRecords" stripe v-loading="loadingCellRecords" style="width: 100%; margin-top: 10px;" height="240">
+              <template #empty><el-empty description="当日无打卡记录" :image-size="60"></el-empty></template>
+              <el-table-column prop="clock_time" label="打卡时间" width="160"></el-table-column>
+              <el-table-column prop="door_name" label="通行位置"></el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
         <template #footer>
           <span class="dialog-footer">
             <el-button type="warning" :loading="calculatingSingle" @click="calculateSingle" style="float: left;">重新核算</el-button>
@@ -316,9 +331,13 @@ const HikUIHTML = `<!DOCTYPE html>
         const matrixData = ref([]);
         const loadingMatrix = ref(false);
         const calculatingMatrix = ref(false);
+        const exportingMatrix = ref(false);
         const daysInMonth = ref([]);
         
         const editDialogVisible = ref(false);
+        const editTab = ref('form');
+        const cellRecords = ref([]);
+        const loadingCellRecords = ref(false);
         const savingEdit = ref(false);
         const editForm = reactive({ personId: '', personName: '', date: '', shiftType: '', remark: '' });
 
@@ -346,6 +365,39 @@ const HikUIHTML = `<!DOCTYPE html>
             }
           } catch(e) {}
           loadingMatrix.value = false;
+        };
+
+        const exportMatrix = () => {
+          if (!matrixData.value || matrixData.value.length === 0) {
+            ElementPlus.ElMessage.warning('没有可导出的数据');
+            return;
+          }
+          exportingMatrix.value = true;
+          try {
+            const header = ['姓名', '编码'];
+            daysInMonth.value.forEach(d => {
+               header.push(d.week + '(' + parseInt(d.num) + ')');
+            });
+            
+            const data = [header];
+            matrixData.value.forEach(row => {
+              const rowData = [row.person_name, row.job_no];
+              daysInMonth.value.forEach(d => {
+                rowData.push(row.days[d.num] || '');
+              });
+              data.push(rowData);
+            });
+            
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "排班考勤汇总");
+            XLSX.writeFile(wb, '排班考勤汇总_' + matrixMonth.value + '.xlsx');
+            
+            ElementPlus.ElMessage.success('导出成功');
+          } catch(e) {
+            ElementPlus.ElMessage.error('导出失败: ' + e.message);
+          }
+          exportingMatrix.value = false;
         };
 
         const progressVisible = Vue.ref(false);
@@ -458,7 +510,23 @@ const HikUIHTML = `<!DOCTYPE html>
           editForm.date = matrixMonth.value + '-' + day;
           editForm.shiftType = row.days[day] || '空白';
           editForm.remark = row.details[day] ? row.details[day].remark : '';
+          editTab.value = 'form';
+          cellRecords.value = [];
           editDialogVisible.value = true;
+
+          const fetchRecords = async () => {
+            loadingCellRecords.value = true;
+            try {
+              const url = '/api/v1/hikiot/attendance/records?person_name=' + encodeURIComponent(row.person_name) + '&start_date=' + editForm.date + '&end_date=' + editForm.date;
+              const res = await fetch(url, { headers: getAuthHeader() });
+              const json = await res.json();
+              if (json.code === 200) {
+                cellRecords.value = json.data || [];
+              }
+            } catch(e) {}
+            loadingCellRecords.value = false;
+          };
+          fetchRecords();
         };
 
         const saveEdit = async () => {
@@ -553,10 +621,10 @@ const HikUIHTML = `<!DOCTYPE html>
           doors, loadingDoors, syncingDoors, controlling,
           attendance, loadingAtt, attQuery, loadAttendance,
           loadDoors, syncDoors, controlDoor,
-          matrixMonth, matrixData, loadingMatrix, calculatingMatrix, daysInMonth, loadMatrix, calculateMatrix,
+          matrixMonth, matrixData, loadingMatrix, calculatingMatrix, exportingMatrix, daysInMonth, loadMatrix, calculateMatrix, exportMatrix,
           clearingResults, clearResults, syncingPersons, syncPersons,
           progressVisible, calcPercent, calcStatusText,
-          handleCellClick, editDialogVisible, savingEdit, editForm, saveEdit, goBack, calculatingSingle, calculateSingle
+          handleCellClick, editDialogVisible, editTab, cellRecords, loadingCellRecords, savingEdit, editForm, saveEdit, goBack, calculatingSingle, calculateSingle
         };
       }
     });
